@@ -1,5 +1,5 @@
 #ifdef WIN32
-#include <SDL.h>
+#include <SDL2/SDL.h>
 #undef main
 #else
 #include <SDL2/SDL.h>
@@ -35,25 +35,35 @@ uniform mat4 view;
 
 layout (location = 0) in vec2 in_position;
 layout (location = 1) in vec4 in_color;
+layout (location = 2) in float in_dist;
 
 out vec4 color;
+out float dist;
 
 void main()
 {
 	gl_Position = view * vec4(in_position, 0.0, 1.0);
 	color = in_color;
+    dist = in_dist;
 }
 )";
 
 const char fragment_shader_source[] =
 R"(#version 330 core
 
+uniform int dotted;
+uniform float time;
+
 in vec4 color;
+in float dist;
 
 layout (location = 0) out vec4 out_color;
 
 void main()
 {
+    if (dotted == 1 && mod(dist - time, 40.0) < 20.0) {
+        discard;
+    }
 	out_color = color;
 }
 )";
@@ -109,6 +119,12 @@ struct vertex
 	std::uint8_t color[4];
 };
 
+struct vertex_d
+{
+    vertex v;
+    float dist;
+};
+
 vec2 bezier(std::vector<vertex> const & vertices, float t)
 {
 	std::vector<vec2> points(vertices.size());
@@ -124,6 +140,23 @@ vec2 bezier(std::vector<vertex> const & vertices, float t)
 		}
 	}
 	return points[0];
+}
+
+void bezier_calc(std::vector<vertex> const & vertices, int quality, std::vector<vertex_d> &res) {
+    res.clear();
+    if (vertices.empty())
+        return;
+    quality *= vertices.size();
+    for (int i = 0; i <= quality; i++) {
+        float t = (float) i / (float) quality;
+        float dist = 0.f;
+        auto v = bezier(vertices, t);
+        if (i > 0) {
+            const auto &prev = res.back();
+            dist = prev.dist + std::hypot(prev.v.position.x - v.x, prev.v.position.y - v.y);
+        }
+        res.push_back({{v,{0, 0, 255, 255}}, dist});
+    }
 }
 
 int main() try
@@ -168,15 +201,58 @@ int main() try
 	auto fragment_shader = create_shader(GL_FRAGMENT_SHADER, fragment_shader_source);
 	auto program = create_program(vertex_shader, fragment_shader);
 
-	GLuint view_location = glGetUniformLocation(program, "view");
+	GLint view_location = glGetUniformLocation(program, "view");
+    GLint dotted_location = glGetUniformLocation(program, "dotted");
+    GLint time_location = glGetUniformLocation(program, "time");
 
-	auto last_frame_start = std::chrono::high_resolution_clock::now();
+    std::vector<vertex> vertexes;
+    std::vector<vertex_d> bezier_data;
+
+    GLuint vbo;
+    glGenBuffers(1, &vbo);
+    glBindBuffer(GL_ARRAY_BUFFER, vbo);
+
+    GLuint vao;
+    glGenVertexArrays(1, &vao);
+    glBindVertexArray(vao);
+
+    glEnableVertexAttribArray(0);
+    glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, sizeof(vertex), (void *) 0);
+
+    glEnableVertexAttribArray(1);
+    glVertexAttribPointer(1, 4, GL_UNSIGNED_BYTE, GL_TRUE, sizeof(vertex), (void *) sizeof(vec2));
+
+
+    GLuint vbo_b;
+    glGenBuffers(1, &vbo_b);
+    glBindBuffer(GL_ARRAY_BUFFER, vbo_b);
+
+    GLuint vao_b;
+    glGenVertexArrays(1, &vao_b);
+    glBindVertexArray(vao_b);
+
+    glEnableVertexAttribArray(0);
+    glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, sizeof(vertex_d), (void *) 0);
+
+    glEnableVertexAttribArray(1);
+    glVertexAttribPointer(1, 4, GL_UNSIGNED_BYTE, GL_TRUE, sizeof(vertex_d), (void *) sizeof(vec2));
+
+    glEnableVertexAttribArray(2);
+    glVertexAttribPointer(2, 1, GL_FLOAT, GL_FALSE, sizeof(vertex_d), (void *) sizeof(vertex));
+
+    glPointSize(10);
+
+    int quality = 4;
+
+    auto last_frame_start = std::chrono::high_resolution_clock::now();
 
 	float time = 0.f;
 
 	bool running = true;
 	while (running)
 	{
+        bool vector_changed = false;
+        bool quality_changed = false;
 		for (SDL_Event event; SDL_PollEvent(&event);) switch (event.type)
 		{
 		case SDL_QUIT:
@@ -196,20 +272,32 @@ int main() try
 			{
 				int mouse_x = event.button.x;
 				int mouse_y = event.button.y;
+                vertexes.push_back({
+                {(float)mouse_x, (float)mouse_y},
+                {255, 0, 0, 255}
+                });
+                vector_changed = true;
 			}
 			else if (event.button.button == SDL_BUTTON_RIGHT)
 			{
-
+                if (!vertexes.empty()) {
+                    vertexes.pop_back();
+                    vector_changed = true;
+                }
 			}
 			break;
 		case SDL_KEYDOWN:
 			if (event.key.keysym.sym == SDLK_LEFT)
 			{
-
+                if (quality > 1) {
+                    quality--;
+                    quality_changed = true;
+                }
 			}
 			else if (event.key.keysym.sym == SDLK_RIGHT)
 			{
-
+                quality++;
+                quality_changed = true;
 			}
 			break;
 		}
@@ -224,16 +312,39 @@ int main() try
 
 		glClear(GL_COLOR_BUFFER_BIT);
 
+        if (vector_changed) {
+            glBindBuffer(GL_ARRAY_BUFFER, vbo);
+            glBufferData(GL_ARRAY_BUFFER, vertexes.size() * sizeof(vertex), vertexes.data(), GL_DYNAMIC_COPY);
+        }
+
+        if (vector_changed || quality_changed) {
+            bezier_calc(vertexes, quality, bezier_data);
+            glBindBuffer(GL_ARRAY_BUFFER, vbo_b);
+            glBufferData(GL_ARRAY_BUFFER, bezier_data.size() * sizeof(vertex_d), bezier_data.data(), GL_DYNAMIC_COPY);
+        }
+
 		float view[16] =
 		{
-			1.f, 0.f, 0.f, 0.f,
-			0.f, 1.f, 0.f, 0.f,
-			0.f, 0.f, 1.f, 0.f,
-			0.f, 0.f, 0.f, 1.f,
+			2.f / (float) width,    0.f,                    0.f, -1.f,
+			0.f,                    -2.f / (float) height,  0.f, 1.f,
+            0.f,                    0.f,                    1.f, 0.f,
+			0.f,                    0.f,                    0.f, 1.f,
 		};
 
 		glUseProgram(program);
 		glUniformMatrix4fv(view_location, 1, GL_TRUE, view);
+        glUniform1i(dotted_location, 0);
+        glUniform1f(time_location, time * 100);
+
+        glBindBuffer(GL_ARRAY_BUFFER, vbo);
+        glBindVertexArray(vao);
+        glDrawArrays(GL_POINTS, 0, vertexes.size());
+        glDrawArrays(GL_LINE_STRIP, 0, vertexes.size());
+
+        glUniform1i(dotted_location, 1);
+        glBindBuffer(GL_ARRAY_BUFFER, vbo_b);
+        glBindVertexArray(vao_b);
+        glDrawArrays(GL_LINE_STRIP, 0, bezier_data.size());
 
 		SDL_GL_SwapWindow(window);
 	}

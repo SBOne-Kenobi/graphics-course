@@ -13,6 +13,7 @@
 #include <chrono>
 #include <vector>
 #include <map>
+#include <cmath>
 
 std::string to_string(std::string_view str)
 {
@@ -206,12 +207,49 @@ int main() try
 	auto fragment_shader = create_shader(GL_FRAGMENT_SHADER, fragment_shader_source);
 	auto program = create_program(vertex_shader, fragment_shader);
 
-	GLuint view_location = glGetUniformLocation(program, "view");
-	GLuint transform_location = glGetUniformLocation(program, "transform");
+	GLint view_location = glGetUniformLocation(program, "view");
+	GLint transform_location = glGetUniformLocation(program, "transform");
 
-	auto last_frame_start = std::chrono::high_resolution_clock::now();
+    GLuint vbo;
+    glGenBuffers(1, &vbo);
+    glBindBuffer(GL_ARRAY_BUFFER, vbo);
+
+    GLuint vao;
+    glGenVertexArrays(1, &vao);
+    glBindVertexArray(vao);
+
+    glEnableVertexAttribArray(0);
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(vertex), (void *) 0);
+
+    glEnableVertexAttribArray(1);
+    glVertexAttribPointer(1, 4, GL_UNSIGNED_BYTE, GL_TRUE, sizeof(vertex), (void *) sizeof(vec3));
+
+    GLuint ebo;
+    glGenBuffers(1, &ebo);
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ebo);
+
+    glBufferData(GL_ARRAY_BUFFER, sizeof(vertex) * 24, cube_vertices, GL_STREAM_COPY);
+    glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(uint32_t) * 36, cube_indices, GL_STREAM_COPY);
+
+    glEnable(GL_DEPTH_TEST);
+
+    auto last_frame_start = std::chrono::high_resolution_clock::now();
 
 	float time = 0.f;
+
+    float near = 0.001f;
+    float far = 1000.f;
+    float fov = 45.f * (float) std::asin(1) / 90.f;
+    float right = near * std::tan(fov);
+    float top = right * (float) height / (float) width;
+
+    float angle = 0.f;
+    float angle_speed = 1.f;
+
+    float cube_x = 0.f;
+    float x_speed = 2.f;
+    float cube_y = 0.f;
+    float y_speed = 2.f;
 
 	std::map<SDL_Keycode, bool> button_down;
 
@@ -229,6 +267,7 @@ int main() try
 				width = event.window.data1;
 				height = event.window.data2;
 				glViewport(0, 0, width, height);
+                top = right * (float) height / (float) width;
 				break;
 			}
 			break;
@@ -248,27 +287,61 @@ int main() try
 		last_frame_start = now;
 		time += dt;
 
-		glClear(GL_COLOR_BUFFER_BIT);
+        angle += angle_speed * dt;
+        if (button_down[SDLK_LEFT])
+            cube_x -= x_speed * dt;
+        if (button_down[SDLK_RIGHT])
+            cube_x += x_speed * dt;
+        if (button_down[SDLK_DOWN])
+            cube_y -= y_speed * dt;
+        if (button_down[SDLK_UP])
+            cube_y += y_speed * dt;
+
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
 		float view[16] =
 		{
-			1.f, 0.f, 0.f, 0.f,
-			0.f, 1.f, 0.f, 0.f,
-			0.f, 0.f, 1.f, 0.f,
-			0.f, 0.f, 0.f, 1.f,
+			near / right,   0.f,        0.f, 0.f,
+			0.f,            near / top, 0.f, 0.f,
+			0.f,            0.f,        -(far + near) / (far - near), -2.f * far * near / (far - near),
+			0.f,            0.f,        -1.f, 0.f,
 		};
 
-		float transform[16] =
-		{
-			1.f, 0.f, 0.f, 0.f,
-			0.f, 1.f, 0.f, 0.f,
-			0.f, 0.f, 1.f, 0.f,
-			0.f, 0.f, 0.f, 1.f,
-		};
+        std::vector<std::vector<float>> transform{
+            {
+                cos(angle), 0.f, sin(angle), cube_x - 1.2f,
+                0.f, 1.f, 0.f, cube_y - 0.7f,
+                -sin(angle), 0.f, cos(angle), -5.f,
+                0.f, 0.f, 0.f, 1.f,
+            },
+            {
+                cos(angle), sin(angle), 0.f, cube_x + 1.2f,
+                -sin(angle), cos(angle), 0.f, cube_y - 0.7f,
+                0.f, 0.f, 1.f, -5.f,
+                0.f, 0.f, 0.f, 1.f,
+            },
+            {
+                1.f, 0.f, 0.f, cube_x,
+                0.f, cos(angle), sin(angle), cube_y + 1.f,
+                0.f, -sin(angle), cos(angle), -5.f,
+                0.f, 0.f, 0.f, 1.f,
+            },
+        };
 
-		glUseProgram(program);
-		glUniformMatrix4fv(view_location, 1, GL_TRUE, view);
-		glUniformMatrix4fv(transform_location, 1, GL_TRUE, transform);
+        glUseProgram(program);
+        glUniformMatrix4fv(view_location, 1, GL_TRUE, view);
+
+        for (int i = 0; i < 3; i++) {
+
+            for (int j = 0; j < 3 * 4; j++) {
+                if (j % 4 != 3) {
+                    transform[i][j] *= 0.5f;
+                }
+            }
+
+            glUniformMatrix4fv(transform_location, 1, GL_TRUE, transform[i].data());
+            glDrawElements(GL_TRIANGLES, 36, GL_UNSIGNED_INT, (void *) 0);
+        }
 
 		SDL_GL_SwapWindow(window);
 	}

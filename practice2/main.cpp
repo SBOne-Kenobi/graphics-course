@@ -30,10 +30,13 @@ void glew_fail(std::string_view message, GLenum error)
 const char vertex_shader_source[] =
 R"(#version 330 core
 
+uniform mat4 view;
+uniform mat4 transform;
+
 const vec2 VERTICES[3] = vec2[3](
-	vec2(0.0, 0.0),
-	vec2(1.0, 0.0),
-	vec2(0.0, 1.0)
+    vec2(0.0, 0.0),
+    vec2(1.0, 0.0),
+    vec2(0.0, 1.0)
 );
 
 out vec3 color;
@@ -41,8 +44,8 @@ out vec3 color;
 void main()
 {
 	vec2 position = VERTICES[gl_VertexID];
-	gl_Position = vec4(position, 0.0, 1.0);
-	color = vec3(position, 0.0);
+	gl_Position = view * transform * vec4(position, 0.0, 1.0);
+	color = vec3(position, 0.0) + vec3(0.5, 0.5, 0.0);
 }
 )";
 
@@ -124,6 +127,8 @@ int main() try
 	if (!gl_context)
 		sdl2_fail("SDL_GL_CreateContext: ");
 
+    SDL_GL_SetSwapInterval(0);
+
 	if (auto result = glewInit(); result != GLEW_NO_ERROR)
 		glew_fail("glewInit: ", result);
 
@@ -139,6 +144,13 @@ int main() try
 
 	GLuint vao;
 	glGenVertexArrays(1, &vao);
+
+    float angle = 0.0;
+    float speed = 1.0;
+    float x = 0.0;
+    float y = 0.0;
+    float vx = 0.0;
+    float vy = -0.0;
 
 	auto last_frame_start = std::chrono::high_resolution_clock::now();
 
@@ -166,13 +178,53 @@ int main() try
 
 		auto now = std::chrono::high_resolution_clock::now();
 		float dt = std::chrono::duration_cast<std::chrono::duration<float>>(now - last_frame_start).count();
+        std::cout << dt << "\n";
 		last_frame_start = now;
+
+        angle += speed * dt;
+        x += vx * dt;
+        y += vy * dt;
 
 		glClear(GL_COLOR_BUFFER_BIT);
 
-		glUseProgram(program);
-		glBindVertexArray(vao);
-		glDrawArrays(GL_TRIANGLES, 0, 3);
+        GLint viewLoc = glGetUniformLocation(program, "view");
+        GLint transformLoc = glGetUniformLocation(program, "transform");
+        glUseProgram(program);
+
+        float sc_x = 1;
+        float sc_y = 1;
+        if (width > height) {
+            sc_x = float(height) / float(width);
+        } else {
+            sc_y = float(width) / float(height);
+        }
+
+        float view[16] =
+            {
+                sc_x, 0, 0, 0,
+                0, sc_y, 0, 0,
+                0, 0, 1, 0,
+                0, 0, 0, 1
+            };
+        glUniformMatrix4fv(viewLoc, 1, GL_TRUE, view);
+
+        float scale = 0.5;
+        float transform[16] =
+            {
+                cos(angle),     sin(angle), 0, 0,
+                -sin(angle),    cos(angle), 0, 0,
+                0,              0,          1, 0,
+                0,              0,          0, 1
+            };
+        for (int i = 0; i < 8; i++) {
+            transform[i] *= scale;
+        }
+        transform[3] = x;
+        transform[7] = y;
+        glUniformMatrix4fv(transformLoc, 1, GL_TRUE, transform);
+
+        glBindVertexArray(vao);
+        glDrawArrays(GL_TRIANGLES, 0, 3);
 
 		SDL_GL_SwapWindow(window);
 	}

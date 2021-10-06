@@ -14,6 +14,7 @@
 #include <vector>
 #include <map>
 #include <cmath>
+#include "test_image.h"
 
 std::string to_string(std::string_view str)
 {
@@ -37,26 +38,34 @@ uniform mat4 view;
 uniform mat4 projection;
 
 layout (location = 0) in vec3 in_position;
+layout (location = 1) in vec2 in_tex_coords;
 
 out vec4 color;
+out vec2 tex_coords;
 
 void main()
 {
 	gl_Position = projection * view * vec4(in_position, 1.0);
 	color = vec4(1.0, 0.0, 1.0, 1.0);
+    tex_coords = in_tex_coords;
 }
 )";
 
 const char fragment_shader_source[] =
 R"(#version 330 core
 
+uniform sampler2D tex;
+uniform sampler2D test_tex;
+
 in vec4 color;
+in vec2 tex_coords;
 
 layout (location = 0) out vec4 out_color;
 
 void main()
 {
-	out_color = color;
+    float cat = 0.3;
+	out_color = (1.0 - cat) * texture(tex, tex_coords) + cat * texture(test_tex, tex_coords);
 }
 )";
 
@@ -109,14 +118,15 @@ struct vec3
 struct vertex
 {
 	vec3 position;
+    float tex_coords[2];
 };
 
 static vertex plane_vertices[]
 {
-	{{-10.f, 0.f, -10.f}},
-	{{-10.f, 0.f,  10.f}},
-	{{ 10.f, 0.f, -10.f}},
-	{{ 10.f, 0.f,  10.f}},
+	{{-10.f, 0.f, -10.f}, {0, 0}},
+	{{-10.f, 0.f,  10.f}, {0, 1}},
+	{{ 10.f, 0.f, -10.f}, {1, 0}},
+	{{ 10.f, 0.f,  10.f}, {1, 1}},
 };
 
 static std::uint32_t plane_indices[]
@@ -168,8 +178,10 @@ int main() try
 	auto fragment_shader = create_shader(GL_FRAGMENT_SHADER, fragment_shader_source);
 	auto program = create_program(vertex_shader, fragment_shader);
 
-	GLuint view_location = glGetUniformLocation(program, "view");
-	GLuint projection_location = glGetUniformLocation(program, "projection");
+	GLint view_location = glGetUniformLocation(program, "view");
+	GLint projection_location = glGetUniformLocation(program, "projection");
+    GLint tex_location = glGetUniformLocation(program, "tex");
+    GLint test_tex_location = glGetUniformLocation(program, "test_tex");
 
 	GLuint vao, vbo, ebo;
 	glGenVertexArrays(1, &vao);
@@ -185,8 +197,75 @@ int main() try
 
 	glEnableVertexAttribArray(0);
 	glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(vertex), (void*)(0));
+    glEnableVertexAttribArray(1);
+    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, sizeof(vertex), (void *) sizeof(vec3));
 
-	auto last_frame_start = std::chrono::high_resolution_clock::now();
+    GLuint tex;
+    glGenTextures(1, &tex);
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, tex);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+    std::vector<uint8_t> image;
+
+    int sz = 1024;
+
+    for (int i = 0; i < sz; i++) {
+        for (int j = 0; j < sz; j++) {
+            uint8_t c = 0;
+            if ((i + j) % 2 == 0)
+                c = 255;
+            for (int k = 0; k < 3; k++)
+                image.push_back(c);
+            image.push_back(255);
+        }
+    }
+
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, sz, sz, 0, GL_RGBA, GL_UNSIGNED_BYTE, image.data());
+    glGenerateMipmap(GL_TEXTURE_2D);
+
+    std::vector<uint8_t> red;
+    for (int i = 0; i < sz / 2; i++) {
+        for (int j = 0; j < sz / 2; j++) {
+            red.push_back(255);
+            red.push_back(0);
+            red.push_back(0);
+            red.push_back(255);
+        }
+    }
+    glTexImage2D(GL_TEXTURE_2D, 1, GL_RGBA, sz / 2, sz / 2, 0, GL_RGBA, GL_UNSIGNED_BYTE, red.data());
+    std::vector<uint8_t> blue;
+    for (int i = 0; i < sz / 4; i++) {
+        for (int j = 0; j < sz / 4; j++) {
+            blue.push_back(0);
+            blue.push_back(0);
+            blue.push_back(255);
+            blue.push_back(255);
+        }
+    }
+    glTexImage2D(GL_TEXTURE_2D, 2, GL_RGBA, sz / 4, sz / 4, 0, GL_RGBA, GL_UNSIGNED_BYTE, blue.data());
+    std::vector<uint8_t> green;
+    for (int i = 0; i < sz / 8; i++) {
+        for (int j = 0; j < sz / 8; j++) {
+            green.push_back(255);
+            green.push_back(255);
+            green.push_back(255);
+            green.push_back(255);
+        }
+    }
+    glTexImage2D(GL_TEXTURE_2D, 3, GL_RGBA, sz / 8, sz / 8, 0, GL_RGBA, GL_UNSIGNED_BYTE, green.data());
+
+
+    GLuint test_tex;
+    glGenTextures(1, &test_tex);
+    glActiveTexture(GL_TEXTURE1);
+    glBindTexture(GL_TEXTURE_2D, test_tex);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, test_image_width, test_image_height, 0, GL_RGB, GL_UNSIGNED_BYTE, test_image);
+
+    auto last_frame_start = std::chrono::high_resolution_clock::now();
 
 	float time = 0.f;
 
@@ -233,7 +312,7 @@ int main() try
 		float top = near;
 		float right = (top * width) / height;
 
-		float view_angle = M_PI / 6.f;
+		float view_angle = time;
 
 		float view[16] =
 		{
@@ -254,6 +333,8 @@ int main() try
 		glUseProgram(program);
 		glUniformMatrix4fv(view_location, 1, GL_TRUE, view);
 		glUniformMatrix4fv(projection_location, 1, GL_TRUE, projection);
+        glUniform1i(tex_location, 0);
+        glUniform1i(test_tex_location, 1);
 
 		glBindVertexArray(vao);
 		glDrawElements(GL_TRIANGLES, std::size(plane_indices), GL_UNSIGNED_INT, nullptr);

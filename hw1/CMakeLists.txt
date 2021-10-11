@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.0)
-project(graphics_hw)
+project(hw1)
 
 cmake_policy(SET CMP0072 NEW)
 cmake_policy(SET CMP0074 NEW)
@@ -22,11 +22,24 @@ endif()
 
 set(TARGET_NAME "${PROJECT_NAME}")
 
-add_executable(${TARGET_NAME} main.cpp)
+convertIntoHeader(shaders/graph_fragment_shader.glsl shaders/graph_fragment_shader.h graph_fragment_shader_source)
+convertIntoHeader(shaders/graph_vertex_shader.glsl shaders/graph_vertex_shader.h graph_vertex_shader_source)
+convertIntoHeader(shaders/isoline_vertex_shader.glsl shaders/isoline_vertex_shader.h isoline_vertex_shader_source)
+convertIntoHeader(shaders/isoline_fragment_shader.glsl shaders/isoline_fragment_shader.h isoline_fragment_shader_source)
+
+add_executable(${TARGET_NAME} main.cpp
+	shaders/graph_fragment_shader.h
+	shaders/graph_vertex_shader.h
+	shaders/isoline_vertex_shader.h
+	shaders/isoline_fragment_shader.h
+	include/metaballs.hpp include/utils.hpp include/isoline.hpp include/graph.hpp)
+
 target_include_directories(${TARGET_NAME} PUBLIC
 	"${SDL2_INCLUDE_DIRS}"
 	"${GLEW_INCLUDE_DIRS}"
 	"${OPENGL_INCLUDE_DIRS}"
+	shaders
+	include
 )
 target_link_libraries(${TARGET_NAME} PUBLIC
 	"${GLEW_LIBRARIES}"

@@ -15,149 +15,30 @@
 #include <map>
 #include <cmath>
 
-std::string to_string(std::string_view str)
-{
+#include "graph_fragment_shader.h"
+#include "graph_vertex_shader.h"
+#include "isoline_fragment_shader.h"
+#include "isoline_vertex_shader.h"
+#include "metaballs.hpp"
+#include "utils.hpp"
+#include "isoline.hpp"
+#include "graph.hpp"
+
+using std::cos, std::sin;
+
+std::string to_string(std::string_view str) {
     return std::string(str.begin(), str.end());
 }
 
-void sdl2_fail(std::string_view message)
-{
+void sdl2_fail(std::string_view message) {
     throw std::runtime_error(to_string(message) + SDL_GetError());
 }
 
-void glew_fail(std::string_view message, GLenum error)
-{
+void glew_fail(std::string_view message, GLenum error) {
     throw std::runtime_error(to_string(message) + reinterpret_cast<const char *>(glewGetErrorString(error)));
 }
 
-const char vertex_shader_source[] =
-    R"(#version 330 core
-
-uniform mat4 view;
-uniform mat4 transform;
-
-layout (location = 0) in vec2 in_position;
-layout (location = 1) in float in_value;
-
-out vec4 color;
-
-void main()
-{
-	gl_Position = view * transform * vec4(in_position, in_value, 1.0);
-	color = vec4(0.2 * -in_value, 0.7, 0.2, 1.0);
-}
-)";
-
-const char fragment_shader_source[] =
-    R"(#version 330 core
-
-in vec4 color;
-
-layout (location = 0) out vec4 out_color;
-
-void main()
-{
-	out_color = color;
-}
-)";
-
-GLuint create_shader(GLenum type, const char * source)
-{
-    GLuint result = glCreateShader(type);
-    glShaderSource(result, 1, &source, nullptr);
-    glCompileShader(result);
-    GLint status;
-    glGetShaderiv(result, GL_COMPILE_STATUS, &status);
-    if (status != GL_TRUE)
-    {
-        GLint info_log_length;
-        glGetShaderiv(result, GL_INFO_LOG_LENGTH, &info_log_length);
-        std::string info_log(info_log_length, '\0');
-        glGetShaderInfoLog(result, info_log.size(), nullptr, info_log.data());
-        throw std::runtime_error("Shader compilation failed: " + info_log);
-    }
-    return result;
-}
-
-GLuint create_program(GLuint vertex_shader, GLuint fragment_shader)
-{
-    GLuint result = glCreateProgram();
-    glAttachShader(result, vertex_shader);
-    glAttachShader(result, fragment_shader);
-    glLinkProgram(result);
-
-    GLint status;
-    glGetProgramiv(result, GL_LINK_STATUS, &status);
-    if (status != GL_TRUE)
-    {
-        GLint info_log_length;
-        glGetProgramiv(result, GL_INFO_LOG_LENGTH, &info_log_length);
-        std::string info_log(info_log_length, '\0');
-        glGetProgramInfoLog(result, info_log.size(), nullptr, info_log.data());
-        throw std::runtime_error("Program linkage failed: " + info_log);
-    }
-
-    return result;
-}
-
-struct vec2 {
-    float x;
-    float y;
-};
-
-std::pair<std::vector<vec2>, std::vector<uint32_t>> build_grid(float x0, float y0, float x1, float y1,
-                                                               uint32_t width, uint32_t height) {
-    std::vector<vec2> grid;
-    std::vector<uint32_t> order;
-
-    grid.reserve((width + 1) * (height + 1));
-    for (uint32_t i = 0; i <= width; i++) {
-        float x = x0 + (x1 - x0) * (float) i / (float) width;
-        for (uint32_t j = 0; j <= height; j++) {
-            float y = y0 + (y1 - y0) * (float) j / (float) height;
-            grid.push_back({x, y});
-        }
-    }
-
-    uint32_t restart_index = grid.size();
-
-    order.reserve(2 * (height + 1) * width);
-    for (uint32_t i = 0; i < width; i++) {
-        for (uint32_t j = 0; j <= height; j++) {
-            order.push_back(i * (height + 1) + j);
-            order.push_back((i + 1) * (height + 1) + j);
-        }
-        order.push_back(restart_index);
-    }
-
-    glPrimitiveRestartIndex(restart_index);
-
-    return {grid, order};
-}
-
-template<typename F>
-std::vector<float> compute_values(const std::vector<vec2>& grid, float time, F func) {
-    std::vector<float> values(grid.size());
-    for (uint32_t i = 0; i < grid.size(); i++) {
-        values[i] = func(grid[i].x, grid[i].y, time);
-    }
-    return values;
-}
-
-std::vector<float> dot4(const std::vector<float>& a, const std::vector<float>& b) {
-    std::vector<float> res(16);
-    for (int i = 0; i < 4; i++) {
-        for (int j = 0; j < 4; j++) {
-            for (int k = 0; k < 4; k++) {
-                res[i * 4 + j] += a[i * 4 + k] * b[k * 4 + j];
-            }
-        }
-    }
-    return res;
-}
-
-int main() try
-{
+int main() try {
     if (SDL_Init(SDL_INIT_VIDEO) != 0)
         sdl2_fail("SDL_Init: ");
 
@@ -172,11 +53,11 @@ int main() try
     SDL_GL_SetAttribute(SDL_GL_BLUE_SIZE, 8);
     SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 24);
 
-    SDL_Window * window = SDL_CreateWindow("Graphics course practice 4",
-                                           SDL_WINDOWPOS_CENTERED,
-                                           SDL_WINDOWPOS_CENTERED,
-                                           800, 600,
-                                           SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE | SDL_WINDOW_MAXIMIZED);
+    SDL_Window *window = SDL_CreateWindow("Graphics course practice 4",
+                                          SDL_WINDOWPOS_CENTERED,
+                                          SDL_WINDOWPOS_CENTERED,
+                                          800, 600,
+                                          SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE | SDL_WINDOW_MAXIMIZED);
 
     if (!window)
         sdl2_fail("SDL_CreateWindow: ");
@@ -194,22 +75,28 @@ int main() try
     if (!GLEW_VERSION_3_3)
         throw std::runtime_error("OpenGL 3.3 is not supported");
 
-    glClearColor(0.8f, 0.8f, 1.f, 0.f);
+    glClearColor(0.f, 0.f, 0.f, 0.f);
+    glEnable(GL_DEPTH_TEST);
+    glEnable(GL_PRIMITIVE_RESTART);
+    glLineWidth(2);
+    glPointSize(3);
 
-    auto vertex_shader = create_shader(GL_VERTEX_SHADER, vertex_shader_source);
-    auto fragment_shader = create_shader(GL_FRAGMENT_SHADER, fragment_shader_source);
-    auto program = create_program(vertex_shader, fragment_shader);
+    // Graph settings
 
-    GLint view_location = glGetUniformLocation(program, "view");
-    GLint transform_location = glGetUniformLocation(program, "transform");
+    shader_program graph_program(graph_vertex_shader_source, graph_fragment_shader_source);
+
+    GLint graph_view_location = glGetUniformLocation(graph_program, "view");
+    GLint graph_transform_location = glGetUniformLocation(graph_program, "transform");
+    GLint graph_projection_location = glGetUniformLocation(graph_program, "projection");
 
     GLuint vbo_grid, vbo_value;
     glGenBuffers(1, &vbo_grid);
     glGenBuffers(1, &vbo_value);
 
-    GLuint vao;
-    glGenVertexArrays(1, &vao);
-    glBindVertexArray(vao);
+    GLuint graph_vao;
+    glGenVertexArrays(1, &graph_vao);
+    glBindVertexArray(graph_vao);
+
     glBindBuffer(GL_ARRAY_BUFFER, vbo_grid);
     glEnableVertexAttribArray(0);
     glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, sizeof(vec2), (void *) 0);
@@ -218,29 +105,59 @@ int main() try
     glEnableVertexAttribArray(1);
     glVertexAttribPointer(1, 1, GL_FLOAT, GL_FALSE, sizeof(float), (void *) 0);
 
-    GLuint ebo;
-    glGenBuffers(1, &ebo);
-    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ebo);
+    GLuint graph_ebo;
+    glGenBuffers(1, &graph_ebo);
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, graph_ebo);
 
-    glEnable(GL_DEPTH_TEST);
-    glEnable(GL_PRIMITIVE_RESTART);
+    float x0 = -10.121;
+    float x1 = 10.41;
+    float y0 = -2.0312;
+    float y1 = 18.232;
+    float k = 4.f / std::min(y1 - y0, x1 - x0);
+    float iso_min = -3.00123;
+    float iso_max = 3.00121;
+    uint32_t grid_width = 50;
+    uint32_t grid_height = 50;
+    uint32_t isoline_count = 40;
+    bool isoline_on = true;
 
-    float x0 = -1.f;
-    float y0 = -1.f;
-    float x1 = 1.f;
-    float y1 = 1.f;
-    uint32_t grid_width = 10;
-    uint32_t grid_height = 10;
+    auto func = metaballs_graph(x0, x1, y0, y1, 50);
 
-    auto func = [](float x, float y, float t) {
-        return 0.f;
-    };
-
-    auto [grid, order] = build_grid(x0, y0, x1, y1, grid_width, grid_height);
+    auto[grid, graph_order] = build_grid(grid_width, grid_height);
 
     glBindBuffer(GL_ARRAY_BUFFER, vbo_grid);
-    glBufferData(GL_ARRAY_BUFFER, sizeof(vec2) * grid.size(), grid.data(), GL_STREAM_COPY);
-    glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(uint32_t) * order.size(), order.data(), GL_STREAM_COPY);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(vec2) * grid.size(), grid.data(), GL_DYNAMIC_DRAW);
+    glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(uint32_t) * graph_order.size(), graph_order.data(), GL_DYNAMIC_DRAW);
+
+    // Isoline settings
+
+    shader_program isoline_program(isoline_vertex_shader_source, isoline_fragment_shader_source);
+
+    GLint isoline_view_location = glGetUniformLocation(isoline_program, "view");
+    GLint isoline_transform_location = glGetUniformLocation(isoline_program, "transform");
+    GLint isoline_projection_location = glGetUniformLocation(isoline_program, "projection");
+
+    GLuint vbo_isoline;
+    glGenBuffers(1, &vbo_isoline);
+
+    GLuint isoline_vao;
+    glGenVertexArrays(1, &isoline_vao);
+    glBindVertexArray(isoline_vao);
+
+    glBindBuffer(GL_ARRAY_BUFFER, vbo_isoline);
+    glEnableVertexAttribArray(0);
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(vec3), (void *) 0);
+
+    GLuint isoline_ebo;
+    glGenBuffers(1, &isoline_ebo);
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, isoline_ebo);
+
+    std::vector<float> C(isoline_count);
+    for (int i = 0; i < isoline_count; i++) {
+        C[i] = iso_min + (iso_max - iso_min) * ((float) i / float(isoline_count - 1));
+    }
+
+    // End
 
     auto last_frame_start = std::chrono::high_resolution_clock::now();
 
@@ -252,36 +169,22 @@ int main() try
     float right = near * std::tan(fov);
     float top = right * (float) height / (float) width;
 
-    std::vector<float> view =
-        {
-            near / right,   0.f,        0.f, 0.f,
-            0.f,            near / top, 0.f, 0.f,
-            0.f,            0.f,        -(far + near) / (far - near), -2.f * far * near / (far - near),
-            0.f,            0.f,        -1.f, 0.f,
-        };
-
-    std::vector<float> rev_cam_pos =
-        {
-            1.f, 0.f, 0.f, 0.f,
-            0.f, 1.f, 0.f, 0.f,
-            0.f, 0.f, 1.f, 0.f,
-            0.f, 0.f, 0.f, 1.f,
-        };
-
-    view = dot4(view, rev_cam_pos);
+    changed_value z{-2.2f, 2.f};
+    changed_value angle_z{0.f, 1.f};
+    changed_value angle_x{0.9f, 1.f};
 
     std::map<SDL_Keycode, bool> button_down;
 
     bool running = true;
-    while (running)
-    {
-        for (SDL_Event event; SDL_PollEvent(&event);) switch (event.type)
-            {
+    while (running) {
+        int wheel = 0;
+        for (SDL_Event event; SDL_PollEvent(&event);)
+            switch (event.type) {
                 case SDL_QUIT:
                     running = false;
                     break;
-                case SDL_WINDOWEVENT: switch (event.window.event)
-                    {
+                case SDL_WINDOWEVENT:
+                    switch (event.window.event) {
                         case SDL_WINDOWEVENT_RESIZED:
                             width = event.window.data1;
                             height = event.window.data2;
@@ -291,10 +194,34 @@ int main() try
                     }
                     break;
                 case SDL_KEYDOWN:
+                    if (event.key.keysym.sym == SDLK_SPACE) {
+                        isoline_on = !isoline_on;
+                    }
+                    if (event.key.keysym.sym == SDLK_LCTRL) {
+                        glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
+                    }
+                    if (event.key.keysym.sym == SDLK_LALT) {
+                        glPolygonMode(GL_FRONT_AND_BACK, GL_POINT);
+                    }
                     button_down[event.key.keysym.sym] = true;
                     break;
                 case SDL_KEYUP:
                     button_down[event.key.keysym.sym] = false;
+                    if (event.key.keysym.sym == SDLK_LCTRL || event.key.keysym.sym == SDLK_LALT) {
+                        if (button_down[SDLK_LCTRL]) {
+                            glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
+                        } else if (button_down[SDLK_LALT]) {
+                            glPolygonMode(GL_FRONT_AND_BACK, GL_POINT);
+                        } else {
+                            glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
+                        }
+                    }
+
+                    break;
+                case SDL_MOUSEWHEEL:
+                    wheel = event.wheel.y;
+                    break;
+                case SDL_MOUSEBUTTONDOWN:
                     break;
             }
 
@@ -306,24 +233,113 @@ int main() try
         last_frame_start = now;
         time += dt;
 
-        auto values = compute_values(grid, time, func);
-        glBindBuffer(GL_ARRAY_BUFFER, vbo_value);
-        glBufferData(GL_ARRAY_BUFFER, sizeof(float) * values.size(), values.data(), GL_STREAM_COPY);
+        if (button_down[SDLK_RIGHT] | button_down[SDLK_d]) {
+            angle_z.value += angle_z.velocity * dt;
+        }
+        if (button_down[SDLK_LEFT] | button_down[SDLK_a]) {
+            angle_z.value -= angle_z.velocity * dt;
+        }
+        if (button_down[SDLK_UP]) {
+            angle_x.value += angle_x.velocity * dt;
+        }
+        if (button_down[SDLK_DOWN]) {
+            angle_x.value -= angle_x.velocity * dt;
+        }
+        if (button_down[SDLK_w]) {
+            z.value += z.velocity * dt;
+        }
+        if (button_down[SDLK_s]) {
+            z.value -= z.velocity * dt;
+        }
 
-        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+        if (wheel != 0) {
+            if (button_down[SDLK_LSHIFT]) {
+                if (isoline_count + wheel >= 2) {
+                    isoline_count += wheel;
+                    C.resize(isoline_count);
+                    for (int i = 0; i < isoline_count; i++) {
+                        C[i] = iso_min + (iso_max - iso_min) * ((float) i / float(isoline_count - 1));
+                    }
+                }
+            } else {
+                if (std::min(grid_height, grid_width) >= 1 - wheel) {
+                    grid_width += wheel;
+                    grid_height += wheel;
+                    std::tie(grid, graph_order) = build_grid(grid_width, grid_height);
+                    glBindVertexArray(graph_vao);
+                    glBindBuffer(GL_ARRAY_BUFFER, vbo_grid);
+                    glBufferData(GL_ARRAY_BUFFER, sizeof(vec2) * grid.size(), grid.data(), GL_DYNAMIC_DRAW);
+                    glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(uint32_t) * graph_order.size(), graph_order.data(),
+                                 GL_DYNAMIC_DRAW);
+                }
+            }
+        }
 
         float transform[] = {
-            1.f, 0.f, 0.f, 0.f,
-            0.f, 1.f, 0.f, 0.f,
-            0.f, 0.f, 1.f, 0.f,
+            cos(angle_z.value), sin(angle_z.value), 0.f, 0.f,
+            -sin(angle_z.value), cos(angle_z.value), 0.f, 0.f,
+            0.f, 0.f, k, 0.f,
             0.f, 0.f, 0.f, 1.f,
         };
 
-        glUseProgram(program);
-        glUniformMatrix4fv(view_location, 1, GL_TRUE, view.data());
-        glUniformMatrix4fv(transform_location, 1, GL_TRUE, transform);
+        float view[] = {
+            1.f, 0.f, 0.f, 0.f,
+            0.f, cos(angle_x.value), sin(angle_x.value), 0.f,
+            0.f, -sin(angle_x.value), cos(angle_x.value), z.value,
+            0.f, 0.f, 0.f, 1.f,
+        };
 
-        glDrawElements(GL_TRIANGLE_STRIP, order.size(), GL_UNSIGNED_INT, (void *) 0);
+        float projection[] = {
+            near / right, 0.f, 0.f, 0.f,
+            0.f, near / top, 0.f, 0.f,
+            0.f, 0.f, -(far + near) / (far - near), -2.f * far * near / (far - near),
+            0.f, 0.f, -1.f, 0.f,
+        };
+
+        auto values = compute_values(x0, x1, y0, y1, grid, time, func);
+        glBindVertexArray(graph_vao);
+        glBindBuffer(GL_ARRAY_BUFFER, vbo_value);
+        glBufferData(GL_ARRAY_BUFFER, sizeof(float) * values.size(), values.data(), GL_STREAM_COPY);
+
+        int isoline_points_count = 0;
+        if (isoline_on) {
+            auto [isoline_points, isoline_order] = build_isoline(grid_width, grid_height, grid, values, C);
+            glBindVertexArray(isoline_vao);
+            glBindBuffer(GL_ARRAY_BUFFER, vbo_isoline);
+            glBufferData(GL_ARRAY_BUFFER, sizeof(vec3) * isoline_points.size(), isoline_points.data(), GL_STREAM_COPY);
+            glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, isoline_ebo);
+            glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(uint32_t) * isoline_order.size(), isoline_order.data(),
+                         GL_STREAM_COPY);
+            isoline_points_count = (int) isoline_order.size();
+        }
+
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+        // Graph draw
+
+        glUseProgram(graph_program);
+        glUniformMatrix4fv(graph_view_location, 1, GL_TRUE, view);
+        glUniformMatrix4fv(graph_transform_location, 1, GL_TRUE, transform);
+        glUniformMatrix4fv(graph_projection_location, 1, GL_TRUE, projection);
+
+        glEnable(GL_PRIMITIVE_RESTART);
+        glBindVertexArray(graph_vao);
+        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, graph_ebo);
+        glDrawElements(GL_TRIANGLE_STRIP, graph_order.size(), GL_UNSIGNED_INT, (void *) 0);
+
+        // Isoline draw
+
+        if (isoline_on) {
+            glUseProgram(isoline_program);
+            glUniformMatrix4fv(isoline_view_location, 1, GL_TRUE, view);
+            glUniformMatrix4fv(isoline_transform_location, 1, GL_TRUE, transform);
+            glUniformMatrix4fv(isoline_projection_location, 1, GL_TRUE, projection);
+
+            glDisable(GL_PRIMITIVE_RESTART);
+            glBindVertexArray(isoline_vao);
+            glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, isoline_ebo);
+            glDrawElements(GL_LINES, isoline_points_count, GL_UNSIGNED_INT, (void *) 0);
+        }
 
         SDL_GL_SwapWindow(window);
     }
@@ -331,8 +347,7 @@ int main() try
     SDL_GL_DeleteContext(gl_context);
     SDL_DestroyWindow(window);
 }
-catch (std::exception const & e)
-{
+catch (std::exception const &e) {
     std::cerr << e.what() << std::endl;
     return EXIT_FAILURE;
 }

@@ -11,6 +11,7 @@
 #include <stdexcept>
 #include <iostream>
 #include <chrono>
+#include <cmath>
 
 std::string to_string(std::string_view str)
 {
@@ -211,8 +212,8 @@ int main() try
         float scale = 0.5;
         float transform[16] =
             {
-                cos(angle),     sin(angle), 0, 0,
-                -sin(angle),    cos(angle), 0, 0,
+                std::cos(angle),     std::sin(angle), 0, 0,
+                -std::sin(angle),    std::cos(angle), 0, 0,
                 0,              0,          1, 0,
                 0,              0,          0, 1
             };

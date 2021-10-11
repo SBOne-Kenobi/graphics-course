@@ -15,6 +15,8 @@
 #include <map>
 #include <cmath>
 
+using std::cos, std::sin;
+
 std::string to_string(std::string_view str)
 {
 	return std::string(str.begin(), str.end());

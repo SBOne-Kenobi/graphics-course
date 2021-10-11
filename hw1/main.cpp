@@ -19,6 +19,8 @@
 #include "graph_vertex_shader.h"
 #include "isoline_fragment_shader.h"
 #include "isoline_vertex_shader.h"
+#include "grid_fragment_shader.h"
+#include "grid_vertex_shader.h"
 #include "metaballs.hpp"
 #include "utils.hpp"
 #include "isoline.hpp"
@@ -114,12 +116,10 @@ int main() try {
     float y0 = -2.0312;
     float y1 = 18.232;
     float k = 4.f / std::min(y1 - y0, x1 - x0);
-    float iso_min = -3.00123;
-    float iso_max = 3.00121;
+    float z0 = -3.00123;
+    float z1 = 3.00121;
     uint32_t grid_width = 50;
     uint32_t grid_height = 50;
-    uint32_t isoline_count = 40;
-    bool isoline_on = true;
 
     auto func = metaballs_graph(x0, x1, y0, y1, 50);
 
@@ -136,6 +136,9 @@ int main() try {
     GLint isoline_view_location = glGetUniformLocation(isoline_program, "view");
     GLint isoline_transform_location = glGetUniformLocation(isoline_program, "transform");
     GLint isoline_projection_location = glGetUniformLocation(isoline_program, "projection");
+
+    uint32_t isoline_count = 40;
+    bool isoline_on = true;
 
     GLuint vbo_isoline;
     glGenBuffers(1, &vbo_isoline);
@@ -154,8 +157,26 @@ int main() try {
 
     std::vector<float> C(isoline_count);
     for (int i = 0; i < isoline_count; i++) {
-        C[i] = iso_min + (iso_max - iso_min) * ((float) i / float(isoline_count - 1));
+        C[i] = z0 + (z1 - z0) * ((float) i / float(isoline_count - 1));
     }
+
+    // Grid settings
+
+    shader_program grid_program(grid_vertex_shader_source, grid_fragment_shader_source);
+
+    bool grid_on = true;
+    int grid_x_size = 15;
+    int grid_y_size = 15;
+    int grid_z_size = 10;
+
+    GLint grid_view_location = glGetUniformLocation(grid_program, "view");
+    GLint grid_transform_location = glGetUniformLocation(grid_program, "transform");
+    GLint grid_projection_location = glGetUniformLocation(grid_program, "projection");
+    GLint grid_z0_location = glGetUniformLocation(grid_program, "z0");
+    GLint grid_z1_location = glGetUniformLocation(grid_program, "z1");
+    GLint grid_x_size_location = glGetUniformLocation(grid_program, "x_size");
+    GLint grid_y_size_location = glGetUniformLocation(grid_program, "y_size");
+    GLint grid_z_size_location = glGetUniformLocation(grid_program, "z_size");
 
     // End
 
@@ -169,8 +190,8 @@ int main() try {
     float right = near * std::tan(fov);
     float top = right * (float) height / (float) width;
 
-    changed_value z{-2.2f, 2.f};
-    changed_value angle_z{0.f, 1.f};
+    changed_value z{-2.7f, 2.f};
+    changed_value angle_z{0.5f, 1.f};
     changed_value angle_x{0.9f, 1.f};
 
     std::map<SDL_Keycode, bool> button_down;
@@ -202,6 +223,9 @@ int main() try {
                     }
                     if (event.key.keysym.sym == SDLK_LALT) {
                         glPolygonMode(GL_FRONT_AND_BACK, GL_POINT);
+                    }
+                    if (event.key.keysym.sym == SDLK_TAB) {
+                        grid_on = !grid_on;
                     }
                     button_down[event.key.keysym.sym] = true;
                     break;
@@ -258,7 +282,7 @@ int main() try {
                     isoline_count += wheel;
                     C.resize(isoline_count);
                     for (int i = 0; i < isoline_count; i++) {
-                        C[i] = iso_min + (iso_max - iso_min) * ((float) i / float(isoline_count - 1));
+                        C[i] = z0 + (z1 - z0) * ((float) i / float(isoline_count - 1));
                     }
                 }
             } else {
@@ -339,6 +363,22 @@ int main() try {
             glBindVertexArray(isoline_vao);
             glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, isoline_ebo);
             glDrawElements(GL_LINES, isoline_points_count, GL_UNSIGNED_INT, (void *) 0);
+        }
+
+        // Grid draw
+
+        if (grid_on) {
+            glUseProgram(grid_program);
+            glUniformMatrix4fv(grid_view_location, 1, GL_TRUE, view);
+            glUniformMatrix4fv(grid_transform_location, 1, GL_TRUE, transform);
+            glUniformMatrix4fv(grid_projection_location, 1, GL_TRUE, projection);
+            glUniform1f(grid_z0_location, z0);
+            glUniform1f(grid_z1_location, z1);
+            glUniform1i(grid_x_size_location, grid_x_size);
+            glUniform1i(grid_y_size_location, grid_y_size);
+            glUniform1i(grid_z_size_location, grid_z_size);
+
+            glDrawArrays(GL_LINES, 0, 2 * (grid_x_size + grid_y_size + 2 * grid_z_size));
         }
 
         SDL_GL_SwapWindow(window);

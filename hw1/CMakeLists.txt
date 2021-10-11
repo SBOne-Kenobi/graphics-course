@@ -26,12 +26,16 @@ convertIntoHeader(shaders/graph_fragment_shader.glsl shaders/graph_fragment_shad
 convertIntoHeader(shaders/graph_vertex_shader.glsl shaders/graph_vertex_shader.h graph_vertex_shader_source)
 convertIntoHeader(shaders/isoline_vertex_shader.glsl shaders/isoline_vertex_shader.h isoline_vertex_shader_source)
 convertIntoHeader(shaders/isoline_fragment_shader.glsl shaders/isoline_fragment_shader.h isoline_fragment_shader_source)
+convertIntoHeader(shaders/grid_fragment_shader.glsl shaders/grid_fragment_shader.h grid_fragment_shader_source)
+convertIntoHeader(shaders/grid_vertex_shader.glsl shaders/grid_vertex_shader.h grid_vertex_shader_source)
 
 add_executable(${TARGET_NAME} main.cpp
 	shaders/graph_fragment_shader.h
 	shaders/graph_vertex_shader.h
 	shaders/isoline_vertex_shader.h
 	shaders/isoline_fragment_shader.h
+	shaders/grid_fragment_shader.h
+	shaders/grid_vertex_shader.h
 	include/metaballs.hpp include/utils.hpp include/isoline.hpp include/graph.hpp)
 
 target_include_directories(${TARGET_NAME} PUBLIC

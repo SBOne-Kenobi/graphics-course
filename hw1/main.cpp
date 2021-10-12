@@ -197,6 +197,7 @@ int main() try {
     changed_value z{-2.7f, 2.f};
     changed_value angle_z{0.5f, 1.f};
     changed_value angle_x{0.9f, 1.f};
+    bool pause = false;
 
     std::map<SDL_Keycode, bool> button_down;
 
@@ -220,7 +221,7 @@ int main() try {
                     break;
                 case SDL_KEYDOWN:
                     if (event.key.keysym.sym == SDLK_SPACE) {
-                        isoline_on = !isoline_on;
+                        pause = !pause;
                     }
                     if (event.key.keysym.sym == SDLK_LCTRL) {
                         glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
@@ -228,7 +229,10 @@ int main() try {
                     if (event.key.keysym.sym == SDLK_LALT) {
                         glPolygonMode(GL_FRONT_AND_BACK, GL_POINT);
                     }
-                    if (event.key.keysym.sym == SDLK_TAB) {
+                    if (event.key.keysym.sym == SDLK_1) {
+                        isoline_on = !isoline_on;
+                    }
+                    if (event.key.keysym.sym == SDLK_2) {
                         grid_on = !grid_on;
                     }
                     button_down[event.key.keysym.sym] = true;
@@ -244,12 +248,16 @@ int main() try {
                             glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
                         }
                     }
-
                     break;
                 case SDL_MOUSEWHEEL:
                     wheel = event.wheel.y;
                     break;
                 case SDL_MOUSEBUTTONDOWN:
+                    if (event.button.button == SDL_BUTTON_LEFT) {
+                        func.add_metaball();
+                    } else if (event.button.button == SDL_BUTTON_RIGHT) {
+                        func.remove_metaball();
+                    }
                     break;
             }
 
@@ -259,7 +267,9 @@ int main() try {
         auto now = std::chrono::high_resolution_clock::now();
         float dt = std::chrono::duration_cast<std::chrono::duration<float>>(now - last_frame_start).count();
         last_frame_start = now;
-        time += dt;
+        if (!pause) {
+            time += dt;
+        }
 
         if (button_down[SDLK_RIGHT] | button_down[SDLK_d]) {
             angle_z.value += angle_z.velocity * dt;

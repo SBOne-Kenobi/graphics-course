@@ -120,8 +120,9 @@ int main() try {
     float z1 = 3.00121;
     uint32_t grid_width = 50;
     uint32_t grid_height = 50;
+    int balls_count = 30;
 
-    auto func = metaballs_graph(x0, x1, y0, y1, 50);
+    auto func = metaballs_graph(x0, x1, y0, y1, balls_count);
 
     auto[grid, graph_order] = build_grid(grid_width, grid_height);
 

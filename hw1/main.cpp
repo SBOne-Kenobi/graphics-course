@@ -163,6 +163,9 @@ int main() try {
 
     // Grid settings
 
+    GLuint grid_vao;
+    glGenVertexArrays(1, &grid_vao);
+
     shader_program grid_program(grid_vertex_shader_source, grid_fragment_shader_source);
 
     bool grid_on = true;
@@ -342,6 +345,7 @@ int main() try {
 
         // Graph draw
 
+        glBindVertexArray(grid_vao);
         glUseProgram(graph_program);
         glUniformMatrix4fv(graph_view_location, 1, GL_TRUE, view);
         glUniformMatrix4fv(graph_transform_location, 1, GL_TRUE, transform);

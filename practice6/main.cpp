@@ -50,14 +50,18 @@ layout (location = 0) in vec3 in_position;
 layout (location = 1) in vec3 in_normal;
 layout (location = 2) in vec2 in_texcoord;
 
-out vec3 normal;
 out vec2 texcoord;
+out vec3 position;
+out mat4 f_model;
+out vec3 cam_position;
 
 void main()
 {
 	gl_Position = projection * view * model * vec4(in_position, 1.0);
-	normal = (model * vec4(in_normal, 0.0)).xyz;
 	texcoord = in_texcoord;
+    position = (model * vec4(in_position, 1.0)).xyz;
+    f_model = model;
+    cam_position = (inverse(view) * vec4(0, 0, 0, 1)).xyz;
 }
 )";
 
@@ -65,15 +69,58 @@ const char fragment_shader_source[] =
 R"(#version 330 core
 
 uniform sampler2D albedo_texture;
+uniform sampler2D normal_map;
+uniform sampler2D ao_map;
+uniform sampler2D roughness_map;
 
-in vec3 normal;
+uniform vec3 ambient;
+
+uniform vec3 light_color[3];
+uniform vec3 light_attenuation[3];
+uniform vec3 light_position[3];
+
+uniform mat4 model;
+
 in vec2 texcoord;
+in vec3 position;
+in vec3 cam_position;
 
 layout (location = 0) out vec4 out_color;
 
 void main()
 {
-	out_color = texture(albedo_texture, texcoord);
+    vec3 cam_direction = normalize(cam_position - position);
+    float roughness = texture(roughness_map, texcoord).x;
+
+    vec3 normal = 2 * texture(normal_map, texcoord).xyz - 1;
+    normal = (model * vec4(normal, 0.0)).xyz;
+
+    vec3 color = vec3(0, 0, 0);
+
+	vec3 albedo = texture(albedo_texture, texcoord).xyz;
+
+    float ambient_occlusion = pow(texture(ao_map, texcoord).x, 4.0);
+    color += albedo * ambient * ambient_occlusion;
+
+    for (int i = 0; i < 3; i++) {
+        vec3 light_vector = light_position[i] - position;
+        vec3 light_direction = normalize(light_vector);
+        float light_cosine = dot(normal, light_direction);
+        float light_factor = max(0.0, light_cosine);
+
+        float light_distance = length(light_vector);
+        float light_intensity = 1.0 / dot(light_attenuation[i], vec3(1.0, light_distance, light_distance * light_distance));
+
+        color += albedo * light_color[i] * light_factor * light_intensity;
+
+        vec3 reflected = 2.0 * normal * light_cosine - light_direction;
+        float specular = pow(max(0.0, dot(reflected, cam_direction)), 16.0) * (1.0 - roughness);
+        color += specular;
+    }
+
+    color = color / (1.0 + color);
+
+    out_color = vec4(color, 1.0);
 }
 )";
 
@@ -180,11 +227,28 @@ int main() try
 	auto fragment_shader = create_shader(GL_FRAGMENT_SHADER, fragment_shader_source);
 	auto program = create_program(vertex_shader, fragment_shader);
 
-	GLuint model_location = glGetUniformLocation(program, "model");
-	GLuint view_location = glGetUniformLocation(program, "view");
-	GLuint projection_location = glGetUniformLocation(program, "projection");
-	GLuint albedo_location = glGetUniformLocation(program, "albedo_texture");
+	GLint model_location = glGetUniformLocation(program, "model");
+	GLint view_location = glGetUniformLocation(program, "view");
+	GLint projection_location = glGetUniformLocation(program, "projection");
+	GLint albedo_location = glGetUniformLocation(program, "albedo_texture");
+	GLint ambient_location = glGetUniformLocation(program, "ambient");
+	GLint normal_map_location = glGetUniformLocation(program, "normal_map");
+	GLint albedo_texture_location = glGetUniformLocation(program, "albedo_texture");
+    GLint ao_map_location = glGetUniformLocation(program, "ao_map");
+    GLint roughness_map_location = glGetUniformLocation(program, "roughness_map");
 
+    std::vector<GLint> light_color_location(3);
+    std::vector<GLint> light_attenuation_location(3);
+	std::vector<GLint> light_position_location(3);
+
+	for (int i = 0; i < 3; i++) {
+	    std::string s = "light_color[" + std::to_string(i) + "]";
+        light_color_location[i] = glGetUniformLocation(program, s.c_str());
+        s = "light_attenuation[" + std::to_string(i) + "]";
+        light_attenuation_location[i] = glGetUniformLocation(program, s.c_str());
+        s = "light_position[" + std::to_string(i) + "]";
+        light_position_location[i] = glGetUniformLocation(program, s.c_str());
+    }
 	glUseProgram(program);
 	glUniform1i(albedo_location, 0);
 
@@ -210,12 +274,40 @@ int main() try
 	glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
 
 	GLuint brick_albedo;
+	glActiveTexture(GL_TEXTURE0);
 	glGenTextures(1, &brick_albedo);
 	glBindTexture(GL_TEXTURE_2D, brick_albedo);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
 	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB8, brick_albedo_width, brick_albedo_height, 0, GL_RGB, GL_UNSIGNED_BYTE, brick_albedo_data);
 	glGenerateMipmap(GL_TEXTURE_2D);
+
+	GLuint normal_map;
+    glActiveTexture(GL_TEXTURE1);
+    glGenTextures(1, &normal_map);
+    glBindTexture(GL_TEXTURE_2D, normal_map);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB8, brick_normal_width, brick_normal_height, 0, GL_RGB, GL_UNSIGNED_BYTE, brick_normal_data);
+    glGenerateMipmap(GL_TEXTURE_2D);
+
+    GLuint ao_map;
+    glActiveTexture(GL_TEXTURE2);
+    glGenTextures(1, &ao_map);
+    glBindTexture(GL_TEXTURE_2D, ao_map);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB8, brick_ao_width, brick_ao_height, 0, GL_RGB, GL_UNSIGNED_BYTE, brick_ao_data);
+    glGenerateMipmap(GL_TEXTURE_2D);
+
+    GLuint roughness_map;
+    glActiveTexture(GL_TEXTURE3);
+    glGenTextures(1, &roughness_map);
+    glBindTexture(GL_TEXTURE_2D, roughness_map);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB8, brick_roughness_width, brick_roughness_height, 0, GL_RGB, GL_UNSIGNED_BYTE, brick_roughness_data);
+    glGenerateMipmap(GL_TEXTURE_2D);
 
 	auto last_frame_start = std::chrono::high_resolution_clock::now();
 
@@ -225,6 +317,30 @@ int main() try
 
 	float view_angle = glm::pi<float>() / 6.f;
 	float camera_distance = 15.f;
+	float camera_x = 0.f;
+	float camera_y = 0.f;
+
+	std::vector<glm::vec3> light_position {
+        {8, 2, 0},
+        {6, 2, 0},
+        {2, 1, 0},
+	};
+	std::vector<glm::vec3> light_color {
+        {3, 3, 3},
+        {3, 3, 3},
+        {1, 1, 1},
+	};
+	std::vector<glm::vec3> light_attenuation {
+        {1.0, 0, 0.1},
+        {1.0, 0, 0.1},
+        {1.0, 0, 0.1},
+	};
+
+	std::vector<glm::vec2> light_angle {
+        {0.0, 0.5},
+        {0.0, 1},
+        {0.0, 1.5},
+	};
 
 	bool running = true;
 	while (running)
@@ -258,21 +374,32 @@ int main() try
 		float dt = std::chrono::duration_cast<std::chrono::duration<float>>(now - last_frame_start).count();
 		last_frame_start = now;
 		time += dt;
+		for (int i = 0; i < 3; i++) {
+		    light_angle[i][0] += dt * light_angle[i][1];
+		}
 
-		if (button_down[SDLK_UP])
+		if (button_down[SDLK_w])
 			camera_distance -= 5.f * dt;
-		if (button_down[SDLK_DOWN])
+		if (button_down[SDLK_s])
 			camera_distance += 5.f * dt;
+		if (button_down[SDLK_d])
+		    camera_x += 5.f * dt;
+        if (button_down[SDLK_a])
+            camera_x -= 5.f * dt;
+        if (button_down[SDLK_UP])
+            view_angle += dt;
+        if (button_down[SDLK_DOWN])
+            view_angle -= dt;
 
 		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 		glEnable(GL_DEPTH_TEST);
 		glDisable(GL_CULL_FACE);
 
 		float near = 0.1f;
-		float far = 100.f;
+		float far = 1000.f;
 
 		glm::mat4 view(1.f);
-		view = glm::translate(view, {0.f, 0.f, -camera_distance});
+		view = glm::translate(view, {-camera_x, -camera_y, -camera_distance});
 		view = glm::rotate(view, view_angle, {1.f, 0.f, 0.f});
 
 		glm::mat4 projection = glm::perspective(glm::pi<float>() / 2.f, (1.f * width) / height, near, far);
@@ -281,14 +408,77 @@ int main() try
 		glUniformMatrix4fv(view_location, 1, GL_FALSE, reinterpret_cast<float *>(&view));
 		glUniformMatrix4fv(projection_location, 1, GL_FALSE, reinterpret_cast<float *>(&projection));
 
+		glUniform3f(ambient_location, 0.1, 0.1, 0.1);
+
+		for (int i = 0; i < 3; i++) {
+		    float angle = light_angle[i][0];
+
+            glUniform3f(light_attenuation_location[i],
+                        light_attenuation[i][0],
+                        light_attenuation[i][1],
+                        light_attenuation[i][2]);
+
+            glUniform3f(light_position_location[i],
+                        light_position[i][0] * std::cos(angle) - light_position[i][2] * std::sin(angle),
+                        light_position[i][1] + 3 + 3 * std::cos(3 * angle),
+                        light_position[i][0] * std::sin(angle) + light_position[i][2] * std::cos(angle));
+
+            glUniform3f(light_color_location[i],
+                        light_color[i][0],
+                        light_color[i][1],
+                        light_color[i][2]);
+        }
+
 		glActiveTexture(GL_TEXTURE0);
 		glBindTexture(GL_TEXTURE_2D, brick_albedo);
+        glUniform1i(albedo_texture_location, 0);
+
+		glActiveTexture(GL_TEXTURE1);
+        glBindTexture(GL_TEXTURE_2D, normal_map);
+        glUniform1i(normal_map_location, 1);
+
+        glActiveTexture(GL_TEXTURE2);
+        glBindTexture(GL_TEXTURE_2D, ao_map);
+        glUniform1i(ao_map_location, 2);
+
+        glActiveTexture(GL_TEXTURE3);
+        glBindTexture(GL_TEXTURE_2D, roughness_map);
+        glUniform1i(roughness_map_location, 3);
+
+        // floor
 
 		glm::mat4 model(1.f);
 		model = glm::rotate(model, -glm::pi<float>() / 2.f, {1.f, 0.f, 0.f});
 		glUniformMatrix4fv(model_location, 1, GL_FALSE, reinterpret_cast<float *>(&model));
 
 		glDrawElements(GL_TRIANGLES, std::size(plane_indices), GL_UNSIGNED_INT, nullptr);
+
+		// back
+
+        model = glm::mat4(1.f);
+        model = glm::translate(model, {0, 10, -10});
+        glUniformMatrix4fv(model_location, 1, GL_FALSE, reinterpret_cast<float *>(&model));
+
+        glDrawElements(GL_TRIANGLES, std::size(plane_indices), GL_UNSIGNED_INT, nullptr);
+
+        // left
+
+        model = glm::mat4(1.f);
+        model = glm::translate(model, {10, 10, 0});
+        model = glm::rotate(model, -glm::pi<float>() / 2.f, {0.f, 1.f, 0.f});
+        glUniformMatrix4fv(model_location, 1, GL_FALSE, reinterpret_cast<float *>(&model));
+
+        glDrawElements(GL_TRIANGLES, std::size(plane_indices), GL_UNSIGNED_INT, nullptr);
+
+
+        // right
+
+        model = glm::mat4(1.f);
+        model = glm::translate(model, {-10, 10, 0});
+        model = glm::rotate(model, glm::pi<float>() / 2.f, {0.f, 1.f, 0.f});
+        glUniformMatrix4fv(model_location, 1, GL_FALSE, reinterpret_cast<float *>(&model));
+
+        glDrawElements(GL_TRIANGLES, std::size(plane_indices), GL_UNSIGNED_INT, nullptr);
 
 		SDL_GL_SwapWindow(window);
 	}

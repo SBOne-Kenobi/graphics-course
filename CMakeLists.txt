@@ -7,7 +7,7 @@ set(SDL2_ROOT "D:/sdl2")
 set(GLEW_DLL "${GLEW_ROOT}/bin/Release/x64/glew32.dll")
 set(SDL2_DLL "${SDL2_ROOT}/bin/SDL2.dll")
 
-set(SUBDIRS practice1 practice2 practice3 practice4 practice5 hw1 practice6)
+set(SUBDIRS practice1 practice2 practice3 practice4 practice5 hw1 practice6 practice7)
 
 add_subdirectory(libs)
 

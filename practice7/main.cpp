@@ -394,7 +394,6 @@ int main() try
 		if (button_down[SDLK_RIGHT])
 			model_angle += 2.f * dt;
 
-
         glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 

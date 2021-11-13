@@ -30,6 +30,8 @@ convertIntoHeader(shaders/blur_vertex_shader.glsl shaders/blur_vertex_shader.h b
 convertIntoHeader(shaders/blur_fragment_shader.glsl shaders/blur_fragment_shader.h blur_fragment_shader_source)
 convertIntoHeader(shaders/shadow_vertex_shader.glsl shaders/shadow_vertex_shader.h shadow_vertex_shader_source)
 convertIntoHeader(shaders/shadow_fragment_shader.glsl shaders/shadow_fragment_shader.h shadow_fragment_shader_source)
+convertIntoHeader(shaders/object_vertex_shader.glsl shaders/object_vertex_shader.h object_vertex_shader_source)
+convertIntoHeader(shaders/object_fragment_shader.glsl shaders/object_fragment_shader.h object_fragment_shader_source)
 
 add_executable(${TARGET_NAME}
 	main.cpp
@@ -43,10 +45,12 @@ add_executable(${TARGET_NAME}
 	shaders/shadow_vertex_shader.h shaders/shadow_fragment_shader.h
 	include/direction_light_object.cpp include/direction_light_object.hpp
 	include/point_light_object.cpp include/point_light_object.hpp
+	shaders/object_vertex_shader.h shaders/object_fragment_shader.h
+	include/wavefront_parser.hpp include/wavefront_parser.cpp
 )
 
 target_compile_definitions(${TARGET_NAME} PUBLIC
-	"PRACTICE_SOURCE_DIRECTORY=\"${CMAKE_CURRENT_SOURCE_DIR}\""
+	"PROJECT_SOURCE_DIRECTORY=\"${CMAKE_CURRENT_SOURCE_DIR}\""
 )
 target_include_directories(${TARGET_NAME} PUBLIC
 	"${SDL2_INCLUDE_DIRS}"

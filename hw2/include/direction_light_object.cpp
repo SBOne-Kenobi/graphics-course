@@ -3,19 +3,11 @@
 #include <vector>
 
 direction_light_object::direction_light_object(const glm::vec3 &direction, const glm::vec3 &light) :
-    _direction(direction), _light(light) {}
-
-const glm::vec3 &direction_light_object::get_direction() const {
-    return _direction;
-}
-
-const glm::vec3 &direction_light_object::get_light() const {
-    return _light;
-}
+    direction(direction), light(light) {}
 
 glm::mat4 direction_light_object::get_transform(const std::pair<glm::vec3, glm::vec3>& bbox) const {
     glm::vec3 bbox_center = glm::vec3(0.5) * (bbox.first + bbox.second);
-    glm::vec3 light_z = _direction;
+    glm::vec3 light_z = direction;
     glm::vec3 light_x = glm::normalize(glm::cross(light_z, {bbox.second.x - bbox.first.x, 0.f, 0.f}));
     glm::vec3 light_y = glm::cross(light_x, light_z);
     float shadow_scale_x = 0.f;

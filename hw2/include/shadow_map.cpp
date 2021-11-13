@@ -84,7 +84,7 @@ void shadow_map::draw(
 
     _program.bind();
     glUniformMatrix4fv(_program["transform"], 1, GL_FALSE, reinterpret_cast<float *>(&transform));
-    scene.draw_objects(_program);
+    scene.draw_objects(_program, false);
 
     _blur.do_blur();
     glBindTexture(GL_TEXTURE_2D, _shadow_map);

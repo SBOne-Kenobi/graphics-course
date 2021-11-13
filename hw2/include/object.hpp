@@ -17,7 +17,9 @@ public:
 
     object(std::vector<vertex> vertices, std::vector<int> indices);
 
-    void draw(const shader_program& program);
+    void draw(const shader_program &program, bool use_textures = true, bool use_shadow_map = true);
+
+    object &with_albedo_texture(GLuint albedo_texture);
 
 private:
 
@@ -27,6 +29,8 @@ private:
     GLuint _vao = 0;
     GLuint _vbo = 0;
     GLuint _ebo = 0;
+
+    std::optional<GLuint> _albedo_texture = std::nullopt;
 
 public:
 

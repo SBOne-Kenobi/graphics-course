@@ -9,16 +9,12 @@ public:
 
     direction_light_object(const glm::vec3 &direction, const glm::vec3 &light);
 
-    const glm::vec3 &get_direction() const;
-
-    const glm::vec3 &get_light() const;
-
     glm::mat4 get_transform(const std::pair<glm::vec3, glm::vec3>& bbox) const;
 
-private:
+public:
 
-    glm::vec3 _direction;
-    glm::vec3 _light;
+    glm::vec3 direction;
+    glm::vec3 light;
 
 };
 

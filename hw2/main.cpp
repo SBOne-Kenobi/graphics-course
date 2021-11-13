@@ -11,6 +11,7 @@
 
 #include <string_view>
 #include <stdexcept>
+#include <sstream>
 #include <iostream>
 #include <chrono>
 #include <vector>
@@ -27,8 +28,12 @@
 
 #include "object.hpp"
 #include "shader_program.hpp"
+#include "scene_storage.hpp"
 #include "utils.hpp"
-#include "blur_builder.hpp"
+#include "wavefront_parser.hpp"
+#include "object_vertex_shader.h"
+#include "object_fragment_shader.h"
+#include "direction_light_object.hpp"
 
 std::string to_string(std::string_view str) {
     return std::string(str.begin(), str.end());
@@ -40,6 +45,16 @@ void sdl2_fail(std::string_view message) {
 
 void glew_fail(std::string_view message, GLenum error) {
     throw std::runtime_error(to_string(message) + reinterpret_cast<const char *>(glewGetErrorString(error)));
+}
+
+scene_storage get_sponza() {
+    auto sponza_path_obj = PROJECT_SOURCE_DIRECTORY "/scenes/sponza/sponza.obj";
+    scene_storage res;
+    res.add_object(parse_object(sponza_path_obj));
+
+    std::cout << "Sponza loaded" << std::endl;
+
+    return res;
 }
 
 int main() try {
@@ -77,71 +92,27 @@ int main() try {
     if (!GLEW_VERSION_3_3)
         throw std::runtime_error("OpenGL 3.3 is not supported");
 
+    scene_storage main_scene = get_sponza();
+    main_scene.apply([](object &obj) {
+        obj.model = glm::translate(obj.model, glm::vec3(0.f, -15.f, 0.f));
+        obj.model = glm::scale(obj.model, glm::vec3(0.1f));
+    });
+
+    direction_light_object direction_light(glm::vec3(0.f), glm::vec3(0.f));
+
+    shader_program main_program(object_vertex_shader_source, object_fragment_shader_source);
+
     auto last_frame_start = std::chrono::high_resolution_clock::now();
 
     float time = 0.f;
 
     std::map<SDL_Keycode, bool> button_down;
 
-    float view_elevation = glm::radians(30.f);
+    float view_elevation = glm::radians(0.f);
     float view_azimuth = 0.f;
-    float camera_distance = 0.5f;
+    float camera_distance = 0.0f;
     float near = 0.01f;
     float far = 1000.f;
-
-    auto source_frag_shader_code = R"(
-        #version 330 core
-
-        layout (location = 0) out vec4 out_color;
-        flat in vec3 color;
-
-        void main()
-        {
-            out_color = vec4(color, 1.0);
-        }
-        )";
-
-    auto source_ver_shader_code = R"(
-        #version 330 core
-
-        const vec2 VERTICES[3] = vec2[3](
-            vec2(0.0, 0.0),
-            vec2(1.0, 0.0),
-            vec2(0.0, 1.0));
-
-        const vec3 COLORS[3] = vec3[3](
-            vec3(1, 0, 0),
-            vec3(0, 1, 0),
-            vec3(0, 0, 1));
-
-        flat out vec3 color;
-
-        void main()
-        {
-            gl_Position = vec4(VERTICES[gl_VertexID], 0.0, 1.0);
-            color = COLORS[gl_VertexID];
-        }
-        )";
-
-    GLuint tex;
-    glGenTextures(1, &tex);
-    glBindTexture(GL_TEXTURE_2D, tex);
-    glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-    glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-    glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-    glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, width, height, 0, GL_RGBA, GL_FLOAT, nullptr);
-
-    GLuint fbo;
-    glGenFramebuffers(1, &fbo);
-    glBindFramebuffer(GL_DRAW_FRAMEBUFFER, fbo);
-    glFramebufferTexture(GL_DRAW_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, tex, 0);
-
-    GLuint vao;
-    glGenVertexArrays(1, &vao);
-
-    shader_program program(source_ver_shader_code, source_frag_shader_code);
-    blur_builder main_blur(0, tex, GL_RGBA, width, height, 0);
 
     bool running = true;
     while (running) {
@@ -156,9 +127,6 @@ int main() try {
                             width = event.window.data1;
                             height = event.window.data2;
                             glViewport(0, 0, width, height);
-                            glBindTexture(GL_TEXTURE_2D, tex);
-                            glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, width, height, 0, GL_RGBA, GL_FLOAT, nullptr);
-                            main_blur = blur_builder(0, tex, GL_RGBA, width, height, 0);
                             break;
                     }
                     break;
@@ -179,9 +147,9 @@ int main() try {
         time += dt;
 
         if (button_down[SDLK_UP])
-            camera_distance -= 1.f * dt;
+            camera_distance -= 50.f * dt;
         if (button_down[SDLK_DOWN])
-            camera_distance += 1.f * dt;
+            camera_distance += 50.f * dt;
 
         if (button_down[SDLK_LEFT])
             view_azimuth -= 2.f * dt;
@@ -196,16 +164,30 @@ int main() try {
         glm::mat4 projection = glm::mat4(1.f);
         projection = glm::perspective(glm::pi<float>() / 2.f, (1.f * width) / height, near, far);
 
-        glBindFramebuffer(GL_DRAW_FRAMEBUFFER, fbo);
+        direction_light.direction = glm::vec3(std::cos(0.5f * time), 1.f, std::sin(0.5f * time));
+        direction_light.light = glm::vec3(0.4f, 0.4f, 0.4f);
+
+        glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
         glViewport(0, 0, width, height);
-        glClearColor(0.8f, 0.8f, 1.f, 0.f);
-        glClear(GL_COLOR_BUFFER_BIT);
+        glClearColor(0.8f, 0.6f, 0.4f, 1.f);
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-        program.bind();
-        glBindVertexArray(vao);
-        glDrawArrays(GL_TRIANGLES, 0, 3);
+        glEnable(GL_DEPTH_TEST);
+        glDepthFunc(GL_LEQUAL);
 
-        main_blur.do_blur(10, 10.f);
+        glEnable(GL_CULL_FACE);
+        glCullFace(GL_BACK);
+
+        main_program.bind();
+        glUniformMatrix4fv(main_program["view"], 1, GL_FALSE, reinterpret_cast<float *>(&view));
+        glUniformMatrix4fv(main_program["projection"], 1, GL_FALSE, reinterpret_cast<float *>(&projection));
+
+        glUniform3f(main_program["ambient"], 0.2f, 0.2f, 0.2f);
+
+        glUniform3fv(main_program["light_direction"], 1, reinterpret_cast<float *>(&direction_light.direction));
+        glUniform3fv(main_program["light_color"], 1, reinterpret_cast<float *>(&direction_light.light));
+
+        main_scene.draw_objects(main_program, false, false);
 
         SDL_GL_SwapWindow(window);
     }

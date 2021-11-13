@@ -28,7 +28,7 @@
 #include "object.hpp"
 #include "shader_program.hpp"
 #include "utils.hpp"
-#include "blur.hpp"
+#include "blur_builder.hpp"
 
 std::string to_string(std::string_view str) {
     return std::string(str.begin(), str.end());
@@ -141,7 +141,7 @@ int main() try {
     glGenVertexArrays(1, &vao);
 
     shader_program program(source_ver_shader_code, source_frag_shader_code);
-    blur main_blur(0, tex, GL_RGBA, width, height, 0);
+    blur_builder main_blur(0, tex, GL_RGBA, width, height, 0);
 
     bool running = true;
     while (running) {
@@ -158,7 +158,7 @@ int main() try {
                             glViewport(0, 0, width, height);
                             glBindTexture(GL_TEXTURE_2D, tex);
                             glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, width, height, 0, GL_RGBA, GL_FLOAT, nullptr);
-                            main_blur = blur(0, tex, GL_RGBA, width, height, 0);
+                            main_blur = blur_builder(0, tex, GL_RGBA, width, height, 0);
                             break;
                     }
                     break;

@@ -28,14 +28,21 @@ set(TARGET_NAME "${PROJECT_NAME}")
 
 convertIntoHeader(shaders/blur_vertex_shader.glsl shaders/blur_vertex_shader.h blur_vertex_shader_source)
 convertIntoHeader(shaders/blur_fragment_shader.glsl shaders/blur_fragment_shader.h blur_fragment_shader_source)
+convertIntoHeader(shaders/shadow_vertex_shader.glsl shaders/shadow_vertex_shader.h shadow_vertex_shader_source)
+convertIntoHeader(shaders/shadow_fragment_shader.glsl shaders/shadow_fragment_shader.h shadow_fragment_shader_source)
 
 add_executable(${TARGET_NAME}
 	main.cpp
 	include/utils.hpp include/utils.cpp
 	include/shader_program.cpp include/shader_program.hpp
 	include/object.cpp include/object.hpp
-	include/blur.cpp include/blur.hpp
+	include/blur_builder.cpp include/blur_builder.hpp
 	shaders/blur_vertex_shader.h shaders/blur_fragment_shader.h
+	include/scene_storage.cpp include/scene_storage.hpp
+	include/shadow_map.cpp include/shadow_map.hpp
+	shaders/shadow_vertex_shader.h shaders/shadow_fragment_shader.h
+	include/direction_light_object.cpp include/direction_light_object.hpp
+	include/point_light_object.cpp include/point_light_object.hpp
 )
 
 target_compile_definitions(${TARGET_NAME} PUBLIC

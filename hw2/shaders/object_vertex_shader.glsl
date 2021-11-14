@@ -11,6 +11,7 @@ layout (location = 2) in vec2 in_texcoord;
 out vec3 position;
 out vec3 normal;
 out vec2 texcoord;
+out vec3 cam_position;
 
 void main()
 {
@@ -18,4 +19,5 @@ void main()
     position = (model * vec4(in_position, 1.0)).xyz;
     normal = normalize((model * vec4(in_normal, 0.0)).xyz);
     texcoord = in_texcoord;
+    cam_position = (inverse(view) * vec4(0, 0, 0, 1)).xyz;
 }

@@ -2,6 +2,9 @@
 #include <string>
 #include <sstream>
 #include <unordered_map>
+#include <iostream>
+
+#include "lodepng.h"
 
 #include "wavefront_parser.hpp"
 
@@ -12,10 +15,114 @@ struct hash {
     }
 };
 
-object parse_object(const std::string &file) {
+std::string get_dir(const std::string& path) {
+    auto last_slash_idx = path.rfind('/');
+    if (std::string::npos != last_slash_idx) {
+        return path.substr(0, last_slash_idx);
+    }
+    return "";
+}
+
+struct mtl_items {
+    std::string albedo_file;
+    std::string ao_file;
+    std::string specular_file;
+    glm::vec3 specular_color;
+    float specular_power;
+};
+
+std::unordered_map<std::string, mtl_items> get_mtl(const std::string& path) {
+    std::ifstream in(path, std::ios_base::in);
+    std::string line;
+
+    std::string dir = get_dir(path);
+    std::string current;
+
+    std::unordered_map<std::string, mtl_items> result;
+
+    while (std::getline(in, line)) {
+        std::istringstream str(line);
+
+        std::string cmd;
+
+        if (!(str >> cmd)) {
+            continue;
+        }
+
+        if (cmd[0] == '#') {
+            continue;
+        }
+
+        if (cmd == "newmtl") {
+            str >> current;
+            continue;
+        }
+
+        if (cmd == "Ns") {
+            float sp;
+            str >> sp;
+            result[current].specular_power = sp;
+            continue;
+        }
+
+        if (cmd == "Ks") {
+            float r, g, b;
+            str >> r >> g >> b;
+            result[current].specular_color = {r, g, b};
+            continue;
+        }
+
+        if (cmd == "map_Ks") {
+            std::string name;
+            str >> name;
+            std::replace(name.begin(), name.end(), '\\', '/');
+            std::string img_path = dir;
+            img_path += "/";
+            img_path += name;
+            result[current].specular_file = img_path;
+            continue;
+        }
+
+        if (cmd == "map_bump") {
+            std::string name;
+            str >> name;
+            std::replace(name.begin(), name.end(), '\\', '/');
+            std::string img_path = dir;
+            img_path += "/";
+            img_path += name;
+            result[current].ao_file = img_path;
+            continue;
+        }
+
+        if (cmd == "map_Ka") {
+            std::string name;
+            str >> name;
+            std::replace(name.begin(), name.end(), '\\', '/');
+            std::string img_path = dir;
+            img_path += "/";
+            img_path += name;
+            result[current].albedo_file = img_path;
+            continue;
+        }
+    }
+
+    return result;
+}
+
+void parse_scene(const std::string& file, scene_storage& scene, bool with_textures) {
     std::ifstream in(file, std::ios_base::in);
 
+    std::string dir = get_dir(file);
+    std::unordered_map<std::string, mtl_items> mtl;
+
     std::string line;
+
+    std::string current;
+    GLuint albedo_texture = -1;
+    GLuint ao_map = -1;
+    GLuint specular_map = -1;
+    glm::vec3 specular_color;
+    float specular_power;
 
     std::vector<glm::vec3> positions;
     std::vector<glm::vec3> normals;
@@ -23,15 +130,36 @@ object parse_object(const std::string &file) {
 
     std::vector<vertex> vertices;
     std::vector<int> indices;
-
     std::unordered_map<std::tuple<std::size_t, std::size_t, std::size_t>, int, hash> ids;
+
+    auto add_object = [&]() {
+        if (!indices.empty()) {
+            object obj = object(std::move(vertices), specular_color, specular_power)
+                .with_indices(std::move(indices));
+            if (with_textures && albedo_texture != (GLuint) -1) {
+                obj.with_albedo_texture(albedo_texture);
+            }
+            if (with_textures && ao_map != (GLuint) -1) {
+                obj.with_ao_map(ao_map);
+            }
+            if (with_textures && specular_map != (GLuint) - 1) {
+                obj.with_specular_map(specular_map);
+            }
+            scene.add_object(std::move(obj));
+            indices.clear();
+            vertices.clear();
+            ids.clear();
+        }
+    };
 
     while (std::getline(in, line)) {
         std::replace(line.begin(), line.end(), '/', ' ');
         std::istringstream str(line);
         std::string cmd;
 
-        str >> cmd;
+        if (!(str >> cmd)) {
+            continue;
+        }
         if (cmd[0] == '#') {
             continue;
         }
@@ -58,7 +186,7 @@ object parse_object(const std::string &file) {
         if (cmd == "vt") {
             float u, v;
             str >> u >> v;
-            texcoords.emplace_back(u, v);
+            texcoords.emplace_back(u, 1.0 - v);
             continue;
         }
 
@@ -109,7 +237,95 @@ object parse_object(const std::string &file) {
             // there is not in sponza
             continue;
         }
-    }
 
-    return object(vertices, indices);
+        if (cmd == "g") {
+            add_object();
+            continue;
+        }
+
+        if (cmd == "mtllib") {
+            std::string name;
+            str >> name;
+            std::replace(name.begin(), name.end(), '\\', '/');
+            std::string path = dir;
+            path += "/";
+            path += name;
+            mtl = get_mtl(path);
+            continue;
+        }
+
+        if (cmd == "usemtl") {
+            str >> current;
+            auto& mtli = mtl[current];
+            specular_color = mtli.specular_color;
+            specular_power = mtli.specular_power;
+
+            if (with_textures) {
+                std::vector<unsigned char> image;
+                unsigned width, height;
+
+                if (!mtli.specular_file.empty()) {
+                    lodepng::decode(image, width, height, mtli.specular_file);
+
+                    glGenTextures(1, &specular_map);
+                    glBindTexture(GL_TEXTURE_2D, specular_map);
+                    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+                    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+                    glTexImage2D(
+                        GL_TEXTURE_2D, 0, GL_RGBA,
+                        width, height, 0,
+                        GL_RGBA, GL_UNSIGNED_BYTE, image.data()
+                    );
+                    glGenerateMipmap(GL_TEXTURE_2D);
+                } else {
+                    specular_map = -1;
+                }
+
+                image.clear();
+
+                if (!mtli.albedo_file.empty()) {
+                    lodepng::decode(image, width, height, mtli.albedo_file);
+
+                    glGenTextures(1, &albedo_texture);
+                    glBindTexture(GL_TEXTURE_2D, albedo_texture);
+                    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+                    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+                    glTexImage2D(
+                        GL_TEXTURE_2D, 0, GL_RGBA,
+                        width, height, 0,
+                        GL_RGBA, GL_UNSIGNED_BYTE, image.data()
+                    );
+                    glGenerateMipmap(GL_TEXTURE_2D);
+                } else {
+                    albedo_texture = -1;
+                }
+
+                image.clear();
+
+                if (!mtli.ao_file.empty()) {
+                    lodepng::decode(image, width, height, mtli.ao_file);
+
+                    glGenTextures(1, &ao_map);
+                    glBindTexture(GL_TEXTURE_2D, ao_map);
+                    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+                    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+                    glTexImage2D(
+                        GL_TEXTURE_2D, 0, GL_RGBA,
+                        width, height, 0,
+                        GL_RGBA, GL_UNSIGNED_BYTE, image.data()
+                    );
+                    glGenerateMipmap(GL_TEXTURE_2D);
+                } else {
+                    ao_map = -1;
+                }
+
+            }
+            continue;
+        }
+
+    }
+    in.close();
+    add_object();
+
+    std::cout << "Parse finished" << std::endl;
 }

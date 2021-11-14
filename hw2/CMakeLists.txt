@@ -41,12 +41,13 @@ add_executable(${TARGET_NAME}
 	include/blur_builder.cpp include/blur_builder.hpp
 	shaders/blur_vertex_shader.h shaders/blur_fragment_shader.h
 	include/scene_storage.cpp include/scene_storage.hpp
-	include/shadow_map.cpp include/shadow_map.hpp
+	include/shadow_map_builder.cpp include/shadow_map_builder.hpp
 	shaders/shadow_vertex_shader.h shaders/shadow_fragment_shader.h
 	include/direction_light_object.cpp include/direction_light_object.hpp
 	include/point_light_object.cpp include/point_light_object.hpp
 	shaders/object_vertex_shader.h shaders/object_fragment_shader.h
 	include/wavefront_parser.hpp include/wavefront_parser.cpp
+	lodepng/lodepng.h lodepng/lodepng.cpp
 )
 
 target_compile_definitions(${TARGET_NAME} PUBLIC
@@ -58,6 +59,7 @@ target_include_directories(${TARGET_NAME} PUBLIC
 	"${OPENGL_INCLUDE_DIRS}"
 	include
 	shaders
+	lodepng
 )
 target_link_libraries(${TARGET_NAME} PUBLIC
 	glm

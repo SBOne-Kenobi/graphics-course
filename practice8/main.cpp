@@ -70,7 +70,7 @@ uniform vec3 ambient;
 uniform vec3 light_direction;
 uniform vec3 light_color;
 
-uniform sampler2D shadow_map;
+uniform sampler2D shadow_map_builder;
 uniform mat4 shadow_transform;
 
 in vec3 position;
@@ -87,7 +87,7 @@ void main()
         shadow_coord /= shadow_coord.w;
         if (abs(shadow_coord.x) <= 1.0 && abs(shadow_coord.y) <= 1.0) {
             shadow_coord = shadow_coord * 0.5 + vec4(0.5);
-            in_shadow = texture(shadow_map, shadow_coord.xy).r < shadow_coord.z;
+            in_shadow = texture(shadow_map_builder, shadow_coord.xy).r < shadow_coord.z;
         }
     }
 
@@ -348,7 +348,7 @@ int main() try {
     GLuint model_location = glGetUniformLocation(program, "model");
     GLuint view_location = glGetUniformLocation(program, "view");
     GLuint projection_location = glGetUniformLocation(program, "projection");
-    GLuint shadow_map_location = glGetUniformLocation(program, "shadow_map");
+    GLuint shadow_map_location = glGetUniformLocation(program, "shadow_map_builder");
     GLuint main_shadow_transform_location = glGetUniformLocation(program, "shadow_transform");
 
     GLuint ambient_location = glGetUniformLocation(program, "ambient");

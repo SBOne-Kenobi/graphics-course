@@ -1,23 +1,13 @@
 #include "object.hpp"
 
-object::object(std::vector<vertex> vertices) : _vertices(std::move(vertices)) {
+object::object(std::vector<vertex> vertices, const glm::vec3& specular_color, float specular_power) :
+    vertices(std::move(vertices)), _specular_color(specular_color), _specular_power(specular_power) {
     glGenVertexArrays(1, &_vao);
     glGenBuffers(1, &_vbo);
     glBindBuffer(GL_ARRAY_BUFFER, _vbo);
-    glBufferData(GL_ARRAY_BUFFER, _vertices.size() * sizeof(_vertices[0]), _vertices.data(), GL_DYNAMIC_COPY);
+    glBufferData(GL_ARRAY_BUFFER, this->vertices.size() * sizeof(this->vertices[0]), this->vertices.data(), GL_DYNAMIC_COPY);
     init_vao_vertex(_vao);
 }
-
-object::object(std::vector<vertex> vertices, std::vector<int> indices) : object(std::move(vertices)) {
-    _indices = std::move(indices);
-
-    glGenBuffers(1, &_ebo);
-    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, _ebo);
-    glBufferData(GL_ELEMENT_ARRAY_BUFFER, _indices.value().size() * sizeof(_indices.value()[0]), _indices.value().data(),
-                 GL_DYNAMIC_COPY);
-}
-
-#include "iostream"
 
 void object::draw(const shader_program &program, bool use_textures, bool use_shadow_map) {
     glBindVertexArray(_vao);
@@ -28,10 +18,24 @@ void object::draw(const shader_program &program, bool use_textures, bool use_sha
 
     if (use_textures) {
         if (_albedo_texture.has_value()) {
-            glActiveTexture(GL_TEXTURE0);
+            glActiveTexture(GL_TEXTURE1);
             glBindTexture(GL_TEXTURE_2D, _albedo_texture.value());
-            glUniform1i(program["albedo_texture"], 0);
+            glUniform1i(program["albedo_texture"], 1);
             textures_mask |= (1 << 1);
+        }
+
+        if (_ao_map.has_value()) {
+            glActiveTexture(GL_TEXTURE2);
+            glBindTexture(GL_TEXTURE_2D, _ao_map.value());
+            glUniform1i(program["ao_map"], 2);
+            textures_mask |= (1 << 2);
+        }
+
+        if (_specular_map.has_value()) {
+            glActiveTexture(GL_TEXTURE3);
+            glBindTexture(GL_TEXTURE_2D, _specular_map.value());
+            glUniform1i(program["specular_map"], 3);
+            textures_mask |= (1 << 3);
         }
     }
 
@@ -40,17 +44,37 @@ void object::draw(const shader_program &program, bool use_textures, bool use_sha
     }
 
     glUniform1i(program["textures_mask"], textures_mask);
+    glUniform1f(program["specular_power"], _specular_power);
+    glUniform3fv(program["specular_color"], 1, reinterpret_cast<float *>(&_specular_color));
 
     if (_indices.has_value()) {
         glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, _ebo);
         glDrawElements(GL_TRIANGLES, _indices.value().size(), GL_UNSIGNED_INT, nullptr);
     } else {
-        glDrawArrays(GL_TRIANGLES, 0, _vertices.size());
+        glDrawArrays(GL_TRIANGLES, 0, vertices.size());
     }
-
 }
 
 object &object::with_albedo_texture(GLuint albedo_texture) {
     _albedo_texture = albedo_texture;
+    return *this;
+}
+
+object &object::with_indices(std::vector<int> indices) {
+    _indices = std::move(indices);
+    glGenBuffers(1, &_ebo);
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, _ebo);
+    glBufferData(GL_ELEMENT_ARRAY_BUFFER, _indices.value().size() * sizeof(_indices.value()[0]),
+                 _indices.value().data(), GL_DYNAMIC_COPY);
+    return *this;
+}
+
+object &object::with_ao_map(GLuint ao_map) {
+    _ao_map = ao_map;
+    return *this;
+}
+
+object &object::with_specular_map(GLuint specular_map) {
+    _specular_map = specular_map;
     return *this;
 }

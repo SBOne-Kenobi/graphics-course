@@ -73,7 +73,7 @@ uniform vec3 light_color;
 
 uniform mat4 transform;
 
-uniform sampler2D shadow_map;
+uniform sampler2D shadow_map_builder;
 
 in vec3 position;
 in vec3 normal;
@@ -89,7 +89,7 @@ void main()
 	bool in_shadow_texture = (shadow_pos.x > 0.0) && (shadow_pos.x < 1.0) && (shadow_pos.y > 0.0) && (shadow_pos.y < 1.0) && (shadow_pos.z > 0.0) && (shadow_pos.z < 1.0);
 	float shadow_factor = 1.0;
 	if (in_shadow_texture) {
-        vec2 data = texture(shadow_map, shadow_pos.xy).rg;
+        vec2 data = texture(shadow_map_builder, shadow_pos.xy).rg;
 		float mu = data.x;
         float sigma = data.y - mu * mu;
         float z = shadow_pos.z;
@@ -142,7 +142,7 @@ void main()
 const char debug_fragment_shader_source[] =
     R"(#version 330 core
 
-uniform sampler2D shadow_map;
+uniform sampler2D shadow_map_builder;
 
 in vec2 texcoord;
 
@@ -150,7 +150,7 @@ layout (location = 0) out vec4 out_color;
 
 void main()
 {
-	out_color = texture(shadow_map, texcoord);
+	out_color = texture(shadow_map_builder, texcoord);
 }
 )";
 
@@ -428,7 +428,7 @@ int main() try {
     GLuint light_direction_location = glGetUniformLocation(program, "light_direction");
     GLuint light_color_location = glGetUniformLocation(program, "light_color");
 
-    GLuint shadow_map_location = glGetUniformLocation(program, "shadow_map");
+    GLuint shadow_map_location = glGetUniformLocation(program, "shadow_map_builder");
 
     glUseProgram(program);
     glUniform1i(shadow_map_location, 0);
@@ -437,7 +437,7 @@ int main() try {
     auto debug_fragment_shader = create_shader(GL_FRAGMENT_SHADER, debug_fragment_shader_source);
     auto debug_program = create_program(debug_vertex_shader, debug_fragment_shader);
 
-    GLuint debug_shadow_map_location = glGetUniformLocation(debug_program, "shadow_map");
+    GLuint debug_shadow_map_location = glGetUniformLocation(debug_program, "shadow_map_builder");
 
     glUseProgram(debug_program);
     glUniform1i(debug_shadow_map_location, 0);

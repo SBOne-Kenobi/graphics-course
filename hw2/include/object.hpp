@@ -29,6 +29,8 @@ public:
 
     object& with_mask(GLuint mask);
 
+    object& with_env_map(GLuint env_map);
+
     bool has_mask() const;
 
 private:
@@ -43,6 +45,7 @@ private:
     std::optional<GLuint> _specular_map = std::nullopt;
     std::optional<GLuint> _norm_map = std::nullopt;
     std::optional<GLuint> _mask = std::nullopt;
+    std::optional<GLuint> _env_map = std::nullopt;
 
     glm::vec3 _specular_color;
     float _specular_power;

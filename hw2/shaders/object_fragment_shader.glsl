@@ -7,6 +7,7 @@ uniform sampler2D albedo_texture; // 1 << 1
 uniform sampler2D specular_map; // 1 << 2
 uniform sampler2D norm_map; // 1 << 3
 uniform sampler2D mask; // 1 << 4
+uniform samplerCube env_map; // 1 << 5
 
 uniform vec3 ambient;
 
@@ -37,6 +38,7 @@ void main()
     bool use_specular = (textures_mask & (1 << 2)) != 0;
     bool use_norm = (textures_mask & (1 << 3)) != 0;
     bool use_mask = (textures_mask & (1 << 4)) != 0;
+    bool use_env = (textures_mask & (1 << 5)) != 0;
 
     vec3 normal_vec = use_norm ? normalize(2 * texture(norm_map, texcoord).xyz - 1) : vec3(0.0, 0.0, 1.0);
     normal_vec = normalize(tbn * normal_vec);
@@ -76,14 +78,21 @@ void main()
     }
     vec3 albedo = use_albedo ? texture(albedo_texture, texcoord).rgb : vec3(1.0, 1.0, 1.0);
 
+    if (use_env) {
+        float cosine = dot(normal_vec, cam_direction);
+        vec3 reflected = 2.0 * normal_vec * cosine - cam_direction;
+        float env_factor = 1.0;
+        albedo = env_factor * texture(env_map, -normalize(reflected)).rgb + (1 - env_factor) * albedo;
+    }
+
     vec3 light = ambient;
 
     light += light_color * max(0.0, dot(normal_vec, light_direction)) * shadow_factor;
     vec3 color = albedo * light;
 
     float light_cosine = dot(normal_vec, light_direction);
-    vec3 reflected = 2.0 * normal_vec * light_cosine - light_direction;
-    float specular = pow(max(0.0, dot(reflected, cam_direction)), specular_power) * specular_factor;
+    vec3 light_reflected = 2.0 * normal_vec * light_cosine - light_direction;
+    float specular = pow(max(0.0, dot(light_reflected, cam_direction)), specular_power) * specular_factor;
     color += shadow_factor * specular_color * specular;
 
     for (int i = 0; i < point_light_number; i++) {

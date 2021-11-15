@@ -46,6 +46,13 @@ void object::draw(const shader_program &program, bool use_textures, bool use_sha
         textures_mask |= (1 << 4);
     }
 
+    if (_env_map.has_value()) {
+        glActiveTexture(GL_TEXTURE5);
+        glBindTexture(GL_TEXTURE_CUBE_MAP, _env_map.value());
+        glUniform1i(program["env_map"], 5);
+        textures_mask |= (1 << 5);
+    }
+
     if (use_shadow_map) {
         textures_mask |= (1 << 0);
     }
@@ -93,4 +100,9 @@ object &object::with_mask(GLuint mask) {
 
 bool object::has_mask() const {
     return _mask.has_value();
+}
+
+object &object::with_env_map(GLuint env_map) {
+    _env_map = env_map;
+    return *this;
 }

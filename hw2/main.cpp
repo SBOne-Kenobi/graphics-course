@@ -34,6 +34,7 @@
 #include "object_fragment_shader.h"
 #include "direction_light_object.hpp"
 #include "shadow_map_builder.hpp"
+#include "cubemap_builder.hpp"
 
 std::string to_string(std::string_view str) {
     return std::string(str.begin(), str.end());
@@ -119,16 +120,22 @@ int main() try {
     parse_scene(PROJECT_SOURCE_DIRECTORY "/scenes/helmet/helmet_armet_2.obj", helmet, false);
 
     float helmet_scale = 0.5f;
+    glm::mat4 helmet_model(1.f);
+    helmet_model = glm::translate(helmet_model, {0.f, 0.f, -15.f});
+    helmet_model = glm::rotate(helmet_model, glm::radians(-90.f), {1.f, 0.f, 0.f});
+    helmet_model = glm::scale(helmet_model, glm::vec3(helmet_scale));
 
-    helmet.apply([&helmet_scale](object& obj) {
-        obj.model = glm::translate(obj.model, {0.f, 0.f, -15.f});
-        obj.model = glm::rotate(obj.model, glm::radians(-90.f), {1.f, 0.f, 0.f});
-        obj.model = glm::scale(obj.model, glm::vec3(helmet_scale));
-    });
+    glm::vec3 helmet_position = helmet_model * glm::vec4(0.f, 0.f, 0.f, 1.f);
 
     shader_program main_program(object_vertex_shader_source, object_fragment_shader_source);
 
     shadow_map_builder shadow(0, 1024 * 4);
+    cubemap_builder cubemap(1024);
+
+    helmet.apply([&helmet_model, &cubemap](object &obj) {
+        obj.model = helmet_model;
+        obj.with_env_map(cubemap.cubemap);
+    });
 
     auto main_bbox = get_bbox(main_scene);
 
@@ -276,37 +283,27 @@ int main() try {
 
         if (helmet_follow) {
             helmet_scale += d_scale_helmet;
+            helmet_model = cam_pos_upd;
+            helmet_model = glm::translate(helmet_model, {0.f, 0.f, -15.f});
+            helmet_model = glm::rotate(helmet_model, glm::radians(-90.f), {1.f, 0.f, 0.f});
+            helmet_model = glm::scale(helmet_model, glm::vec3(helmet_scale));
+            helmet_position = helmet_model * glm::vec4(0.f, 0.f, 0.f, 1.f);
 
-            helmet.apply([&cam_pos_upd, &helmet_scale](object& obj) {
-                obj.model = cam_pos_upd;
-                obj.model = glm::translate(obj.model, {0.f, 0.f, -15.f});
-                obj.model = glm::rotate(obj.model, glm::radians(-90.f), {1.f, 0.f, 0.f});
-                obj.model = glm::scale(obj.model, glm::vec3(helmet_scale));
+            helmet.apply([&helmet_model](object& obj) {
+                obj.model = helmet_model;
             });
         }
 
         shadow.draw({&main_scene, &helmet}, main_bbox, direction_light);
 
-        glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
-        glViewport(0, 0, width, height);
         glClearColor(0.8f, 0.6f, 0.4f, 1.f);
-        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-
-        glEnable(GL_DEPTH_TEST);
-        glDepthFunc(GL_LEQUAL);
-
-        glEnable(GL_CULL_FACE);
-        glCullFace(GL_BACK);
 
         glActiveTexture(GL_TEXTURE0);
         glBindTexture(GL_TEXTURE_2D, shadow.shadow_map);
 
         glm::mat4 transform = direction_light.get_transform(main_bbox);
-        glm::mat4 view = glm::inverse(cam_pos_upd);
 
         main_program.bind();
-        glUniformMatrix4fv(main_program["view"], 1, GL_FALSE, reinterpret_cast<float *>(&view));
-        glUniformMatrix4fv(main_program["projection"], 1, GL_FALSE, reinterpret_cast<float *>(&projection));
 
         glUniform3f(main_program["ambient"], 0.3f, 0.3f, 0.3f);
 
@@ -329,6 +326,22 @@ int main() try {
             name << "point_light_position[" << i << "]";
             glUniform3fv(main_program[name.str()], 1, reinterpret_cast<float *>(&point_lights[i].position));
         }
+
+        cubemap.draw(helmet_position, {&main_scene}, main_program, near, far);
+
+        glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
+        glViewport(0, 0, width, height);
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+        glEnable(GL_DEPTH_TEST);
+        glDepthFunc(GL_LEQUAL);
+
+        glEnable(GL_CULL_FACE);
+        glCullFace(GL_BACK);
+
+        glm::mat4 view = glm::inverse(cam_pos_upd);
+        glUniformMatrix4fv(main_program["view"], 1, GL_FALSE, reinterpret_cast<float *>(&view));
+        glUniformMatrix4fv(main_program["projection"], 1, GL_FALSE, reinterpret_cast<float *>(&projection));
 
         main_scene.draw_objects(main_program);
         helmet.draw_objects(main_program);

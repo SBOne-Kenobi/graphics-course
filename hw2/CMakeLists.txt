@@ -48,6 +48,7 @@ add_executable(${TARGET_NAME}
 	shaders/object_vertex_shader.h shaders/object_fragment_shader.h
 	include/wavefront_parser.hpp include/wavefront_parser.cpp
 	stb_image/stb_image.h
+	include/cubemap_builder.cpp include/cubemap_builder.hpp
 )
 
 target_compile_definitions(${TARGET_NAME} PUBLIC

@@ -24,19 +24,26 @@ void object::draw(const shader_program &program, bool use_textures, bool use_sha
             textures_mask |= (1 << 1);
         }
 
-        if (_ao_map.has_value()) {
+        if (_specular_map.has_value()) {
             glActiveTexture(GL_TEXTURE2);
-            glBindTexture(GL_TEXTURE_2D, _ao_map.value());
-            glUniform1i(program["ao_map"], 2);
+            glBindTexture(GL_TEXTURE_2D, _specular_map.value());
+            glUniform1i(program["specular_map"], 2);
             textures_mask |= (1 << 2);
         }
 
-        if (_specular_map.has_value()) {
+        if (_norm_map.has_value()) {
             glActiveTexture(GL_TEXTURE3);
-            glBindTexture(GL_TEXTURE_2D, _specular_map.value());
-            glUniform1i(program["specular_map"], 3);
+            glBindTexture(GL_TEXTURE_2D, _norm_map.value());
+            glUniform1i(program["norm_map"], 3);
             textures_mask |= (1 << 3);
         }
+    }
+
+    if (_mask.has_value()) {
+        glActiveTexture(GL_TEXTURE4);
+        glBindTexture(GL_TEXTURE_2D, _mask.value());
+        glUniform1i(program["mask"], 4);
+        textures_mask |= (1 << 4);
     }
 
     if (use_shadow_map) {
@@ -69,12 +76,21 @@ object &object::with_indices(std::vector<int> indices) {
     return *this;
 }
 
-object &object::with_ao_map(GLuint ao_map) {
-    _ao_map = ao_map;
-    return *this;
-}
-
 object &object::with_specular_map(GLuint specular_map) {
     _specular_map = specular_map;
     return *this;
+}
+
+object &object::with_norm_map(GLuint norm_map) {
+    _norm_map = norm_map;
+    return *this;
+}
+
+object &object::with_mask(GLuint mask) {
+    _mask = mask;
+    return *this;
+}
+
+bool object::has_mask() const {
+    return _mask.has_value();
 }

@@ -47,7 +47,7 @@ add_executable(${TARGET_NAME}
 	include/point_light_object.cpp include/point_light_object.hpp
 	shaders/object_vertex_shader.h shaders/object_fragment_shader.h
 	include/wavefront_parser.hpp include/wavefront_parser.cpp
-	lodepng/lodepng.h lodepng/lodepng.cpp
+	stb_image/stb_image.h
 )
 
 target_compile_definitions(${TARGET_NAME} PUBLIC
@@ -59,7 +59,7 @@ target_include_directories(${TARGET_NAME} PUBLIC
 	"${OPENGL_INCLUDE_DIRS}"
 	include
 	shaders
-	lodepng
+	stb_image
 )
 target_link_libraries(${TARGET_NAME} PUBLIC
 	glm

@@ -18,5 +18,6 @@ public:
 private:
 
     std::vector<object> _objects;
+    std::vector<object> _objects_with_mask;
 
 };

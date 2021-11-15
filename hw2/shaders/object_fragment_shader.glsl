@@ -4,8 +4,9 @@ uniform int textures_mask;
 
 uniform sampler2D shadow_map; // 1 << 0
 uniform sampler2D albedo_texture; // 1 << 1
-uniform sampler2D ao_map; // 1 << 2
-uniform sampler2D specular_map; // 1 << 3
+uniform sampler2D specular_map; // 1 << 2
+uniform sampler2D norm_map; // 1 << 3
+uniform sampler2D mask; // 1 << 4
 
 uniform vec3 ambient;
 
@@ -23,9 +24,9 @@ uniform vec3 point_light_attenuation[32];
 uniform vec3 point_light_position[32];
 
 in vec3 position;
-in vec3 normal;
 in vec2 texcoord;
 in vec3 cam_position;
+in mat3 tbn;
 
 layout (location = 0) out vec4 out_color;
 
@@ -33,8 +34,12 @@ void main()
 {
     bool use_shadow = (textures_mask & (1 << 0)) != 0;
     bool use_albedo = (textures_mask & (1 << 1)) != 0;
-    bool use_ao = (textures_mask & (1 << 2)) != 0;
-    bool use_specular = (textures_mask & (1 << 3)) != 0;
+    bool use_specular = (textures_mask & (1 << 2)) != 0;
+    bool use_norm = (textures_mask & (1 << 3)) != 0;
+    bool use_mask = (textures_mask & (1 << 4)) != 0;
+
+    vec3 normal_vec = use_norm ? normalize(2 * texture(norm_map, texcoord).xyz - 1) : vec3(0.0, 0.0, 1.0);
+    normal_vec = normalize(tbn * normal_vec);
 
     vec3 cam_direction = normalize(cam_position - position);
 
@@ -72,25 +77,20 @@ void main()
 
     vec3 albedo = use_albedo ? texture(albedo_texture, texcoord).rgb : vec3(1.0, 1.0, 1.0);
 
-    float ambient_occlusion = 1.0;
-    if (use_ao) {
-        float ambient_occlusion = texture(ao_map, texcoord).x;
-    }
+    vec3 light = ambient;
 
-    vec3 light = ambient * ambient_occlusion;
-
-    light += light_color * max(0.0, dot(normal, light_direction)) * shadow_factor;
+    light += light_color * max(0.0, dot(normal_vec, light_direction)) * shadow_factor;
     vec3 color = albedo * light;
 
-    float light_cosine = dot(normal, light_direction);
-    vec3 reflected = 2.0 * normal * light_cosine - light_direction;
+    float light_cosine = dot(normal_vec, light_direction);
+    vec3 reflected = 2.0 * normal_vec * light_cosine - light_direction;
     float specular = pow(max(0.0, dot(reflected, cam_direction)), specular_power) * specular_factor;
     color += shadow_factor * specular_color * specular;
 
     for (int i = 0; i < point_light_number; i++) {
         vec3 point_light_vector = point_light_position[i] - position;
         vec3 point_light_direction = normalize(point_light_vector);
-        float point_light_cosine = dot(normal, point_light_direction);
+        float point_light_cosine = dot(normal_vec, point_light_direction);
         float point_light_factor = max(0.0, point_light_cosine);
 
         float point_light_distance = length(point_light_vector);
@@ -99,7 +99,7 @@ void main()
 
         color += albedo * point_light_color[i] * point_light_factor * point_light_intensity;
 
-        vec3 point_reflected = 2.0 * normal * point_light_cosine - point_light_direction;
+        vec3 point_reflected = 2.0 * normal_vec * point_light_cosine - point_light_direction;
         float point_specular = pow(max(0.0, dot(point_reflected, cam_direction)), specular_power) * specular_factor;
         float specular_intensity = 1.0 / dot(vec2(1.0, 0.1),
             vec2(1.0, point_light_distance));
@@ -108,5 +108,7 @@ void main()
 
     color = color / (1.0 + color);
 
-    out_color = vec4(color, 1.0);
+    float alpha = use_mask ? texture(mask, texcoord).x : 1.0;
+
+    out_color = vec4(color, alpha);
 }

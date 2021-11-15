@@ -4,7 +4,8 @@
 #include <unordered_map>
 #include <iostream>
 
-#include "lodepng.h"
+#define STB_IMAGE_IMPLEMENTATION
+#include "stb_image.h"
 
 #include "wavefront_parser.hpp"
 
@@ -24,14 +25,15 @@ std::string get_dir(const std::string& path) {
 }
 
 struct mtl_items {
-    std::string albedo_file;
-    std::string ao_file;
-    std::string specular_file;
-    glm::vec3 specular_color;
-    float specular_power;
+    GLuint albedo_texture = -1;
+    GLuint specular_map = -1;
+    GLuint norm_map = -1;
+    GLuint mask = -1;
+    glm::vec3 specular_color{};
+    float specular_power{};
 };
 
-std::unordered_map<std::string, mtl_items> get_mtl(const std::string& path) {
+std::unordered_map<std::string, mtl_items> get_mtl(const std::string& path, bool with_textures) {
     std::ifstream in(path, std::ios_base::in);
     std::string line;
 
@@ -39,6 +41,9 @@ std::unordered_map<std::string, mtl_items> get_mtl(const std::string& path) {
     std::string current;
 
     std::unordered_map<std::string, mtl_items> result;
+
+    unsigned char *image;
+    int width, height, channels;
 
     while (std::getline(in, line)) {
         std::istringstream str(line);
@@ -79,18 +84,56 @@ std::unordered_map<std::string, mtl_items> get_mtl(const std::string& path) {
             std::string img_path = dir;
             img_path += "/";
             img_path += name;
-            result[current].specular_file = img_path;
+
+            auto& mtli = result[current];
+
+            if (with_textures) {
+                image = stbi_load(img_path.c_str(), &width, &height, &channels, 3);
+
+                glGenTextures(1, &mtli.specular_map);
+                glBindTexture(GL_TEXTURE_2D, mtli.specular_map);
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+                glTexImage2D(
+                    GL_TEXTURE_2D, 0, GL_RGB,
+                    width, height, 0,
+                    GL_RGB, GL_UNSIGNED_BYTE, image
+                );
+                glGenerateMipmap(GL_TEXTURE_2D);
+
+                stbi_image_free(image);
+            }
+
             continue;
         }
 
-        if (cmd == "map_bump") {
+        if (cmd == "norm") {
             std::string name;
             str >> name;
             std::replace(name.begin(), name.end(), '\\', '/');
             std::string img_path = dir;
             img_path += "/";
             img_path += name;
-            result[current].ao_file = img_path;
+
+            auto& mtli = result[current];
+
+            if (with_textures) {
+                image = stbi_load(img_path.c_str(), &width, &height, &channels, 3);
+
+                glGenTextures(1, &mtli.norm_map);
+                glBindTexture(GL_TEXTURE_2D, mtli.norm_map);
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+                glTexImage2D(
+                    GL_TEXTURE_2D, 0, GL_RGB,
+                    width, height, 0,
+                    GL_RGB, GL_UNSIGNED_BYTE, image
+                );
+                glGenerateMipmap(GL_TEXTURE_2D);
+
+                stbi_image_free(image);
+            }
+
             continue;
         }
 
@@ -101,15 +144,66 @@ std::unordered_map<std::string, mtl_items> get_mtl(const std::string& path) {
             std::string img_path = dir;
             img_path += "/";
             img_path += name;
-            result[current].albedo_file = img_path;
+
+            auto& mtli = result[current];
+
+            if (with_textures) {
+                image = stbi_load(img_path.c_str(), &width, &height, &channels, 3);
+
+                glGenTextures(1, &mtli.albedo_texture);
+                glBindTexture(GL_TEXTURE_2D, mtli.albedo_texture);
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+                glTexImage2D(
+                    GL_TEXTURE_2D, 0, GL_RGB,
+                    width, height, 0,
+                    GL_RGB, GL_UNSIGNED_BYTE, image
+                );
+                glGenerateMipmap(GL_TEXTURE_2D);
+
+                stbi_image_free(image);
+            }
+
             continue;
         }
+
+        if (cmd == "map_d") {
+
+            std::string name;
+            str >> name;
+            std::replace(name.begin(), name.end(), '\\', '/');
+            std::string img_path = dir;
+            img_path += "/";
+            img_path += name;
+
+            auto& mtli = result[current];
+
+            if (with_textures) {
+                image = stbi_load(img_path.c_str(), &width, &height, &channels, 3);
+
+                glGenTextures(1, &mtli.mask);
+                glBindTexture(GL_TEXTURE_2D, mtli.mask);
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+                glTexImage2D(
+                    GL_TEXTURE_2D, 0, GL_RGB,
+                    width, height, 0,
+                    GL_RGB, GL_UNSIGNED_BYTE, image
+                );
+                glGenerateMipmap(GL_TEXTURE_2D);
+
+                stbi_image_free(image);
+            }
+        }
+
     }
 
     return result;
 }
 
 void parse_scene(const std::string& file, scene_storage& scene, bool with_textures) {
+    stbi_set_flip_vertically_on_load(1);
+
     std::ifstream in(file, std::ios_base::in);
 
     std::string dir = get_dir(file);
@@ -119,8 +213,9 @@ void parse_scene(const std::string& file, scene_storage& scene, bool with_textur
 
     std::string current;
     GLuint albedo_texture = -1;
-    GLuint ao_map = -1;
     GLuint specular_map = -1;
+    GLuint norm_map = -1;
+    GLuint mask = -1;
     glm::vec3 specular_color;
     float specular_power;
 
@@ -136,14 +231,17 @@ void parse_scene(const std::string& file, scene_storage& scene, bool with_textur
         if (!indices.empty()) {
             object obj = object(std::move(vertices), specular_color, specular_power)
                 .with_indices(std::move(indices));
-            if (with_textures && albedo_texture != (GLuint) -1) {
+            if (albedo_texture != (GLuint) -1) {
                 obj.with_albedo_texture(albedo_texture);
             }
-            if (with_textures && ao_map != (GLuint) -1) {
-                obj.with_ao_map(ao_map);
-            }
-            if (with_textures && specular_map != (GLuint) - 1) {
+            if (specular_map != (GLuint) -1) {
                 obj.with_specular_map(specular_map);
+            }
+            if (norm_map != (GLuint) -1) {
+                obj.with_norm_map(norm_map);
+            }
+            if (mask != (GLuint) -1) {
+                obj.with_mask(mask);
             }
             scene.add_object(std::move(obj));
             indices.clear();
@@ -186,7 +284,7 @@ void parse_scene(const std::string& file, scene_storage& scene, bool with_textur
         if (cmd == "vt") {
             float u, v;
             str >> u >> v;
-            texcoords.emplace_back(u, 1.0 - v);
+            texcoords.emplace_back(u, v);
             continue;
         }
 
@@ -244,82 +342,27 @@ void parse_scene(const std::string& file, scene_storage& scene, bool with_textur
         }
 
         if (cmd == "mtllib") {
+            add_object();
             std::string name;
             str >> name;
             std::replace(name.begin(), name.end(), '\\', '/');
             std::string path = dir;
             path += "/";
             path += name;
-            mtl = get_mtl(path);
+            mtl = get_mtl(path, with_textures);
             continue;
         }
 
         if (cmd == "usemtl") {
+            add_object();
             str >> current;
             auto& mtli = mtl[current];
             specular_color = mtli.specular_color;
             specular_power = mtli.specular_power;
-
-            if (with_textures) {
-                std::vector<unsigned char> image;
-                unsigned width, height;
-
-                if (!mtli.specular_file.empty()) {
-                    lodepng::decode(image, width, height, mtli.specular_file);
-
-                    glGenTextures(1, &specular_map);
-                    glBindTexture(GL_TEXTURE_2D, specular_map);
-                    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-                    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
-                    glTexImage2D(
-                        GL_TEXTURE_2D, 0, GL_RGBA,
-                        width, height, 0,
-                        GL_RGBA, GL_UNSIGNED_BYTE, image.data()
-                    );
-                    glGenerateMipmap(GL_TEXTURE_2D);
-                } else {
-                    specular_map = -1;
-                }
-
-                image.clear();
-
-                if (!mtli.albedo_file.empty()) {
-                    lodepng::decode(image, width, height, mtli.albedo_file);
-
-                    glGenTextures(1, &albedo_texture);
-                    glBindTexture(GL_TEXTURE_2D, albedo_texture);
-                    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-                    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
-                    glTexImage2D(
-                        GL_TEXTURE_2D, 0, GL_RGBA,
-                        width, height, 0,
-                        GL_RGBA, GL_UNSIGNED_BYTE, image.data()
-                    );
-                    glGenerateMipmap(GL_TEXTURE_2D);
-                } else {
-                    albedo_texture = -1;
-                }
-
-                image.clear();
-
-                if (!mtli.ao_file.empty()) {
-                    lodepng::decode(image, width, height, mtli.ao_file);
-
-                    glGenTextures(1, &ao_map);
-                    glBindTexture(GL_TEXTURE_2D, ao_map);
-                    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-                    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
-                    glTexImage2D(
-                        GL_TEXTURE_2D, 0, GL_RGBA,
-                        width, height, 0,
-                        GL_RGBA, GL_UNSIGNED_BYTE, image.data()
-                    );
-                    glGenerateMipmap(GL_TEXTURE_2D);
-                } else {
-                    ao_map = -1;
-                }
-
-            }
+            specular_map = mtli.specular_map;
+            albedo_texture = mtli.albedo_texture;
+            norm_map = mtli.norm_map;
+            mask = mtli.mask;
             continue;
         }
 

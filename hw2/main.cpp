@@ -85,7 +85,6 @@ int main() try {
     SDL_ShowCursor(SDL_DISABLE);
     SDL_SetRelativeMouseMode(SDL_TRUE);
 
-
     scene_storage main_scene;
     parse_scene(PROJECT_SOURCE_DIRECTORY "/scenes/sponza/sponza.obj", main_scene, true);
 
@@ -116,20 +115,22 @@ int main() try {
         }
     });
 
+    float s0 = 5.f;
     float s1 = 10.f;
-    float s2 = 5.f;
+    float s2 = 10.f;
 
-    direction_light_object direction_light(glm::vec3(0.f), {1.f, 0.81f, 0.28f});
+    direction_light_object direction_light(glm::vec3(0.f), {1.f * s0, 0.81f * s0, 0.28f * s0});
+
     std::vector<point_light_object> point_lights = {
         {{-111.5f, 3.0f,  -40.5f}, {0.88f * s1, 0.35f * s1, 0.13f * s1}, {1.f, 0.f, 0.01f}},
         {{111.5f,  3.0f,  -40.5f}, {0.20f * s1, 0.95f * s1, 0.20f * s1}, {1.f, 0.f, 0.01f}},
         {{-111.5f, 3.0f,  40.5f},  {0.58f * s1, 0.72f * s1, 0.90f * s1}, {1.f, 0.f, 0.01f}},
         {{111.5f,  3.0f,  40.5f},  {0.55f * s1, 0.43f * s1, 0.31f * s1}, {1.f, 0.f, 0.01f}},
 
-        {{-61.5f,  -1.5f, 13.0f},  {0.88f * s2, 0.35f * s2, 0.13f * s2}, {1.f, 0.f, 0.1f}},
-        {{-61.5f,  -1.5f, -20.0f}, {0.88f * s2, 0.35f * s2, 0.13f * s2}, {1.f, 0.f, 0.1f}},
-        {{48.5f,   -1.5f, 13.0f},  {0.88f * s2, 0.35f * s2, 0.13f * s2}, {1.f, 0.f, 0.1f}},
-        {{48.5f,   -1.5f, -20.0f}, {0.88f * s2, 0.35f * s2, 0.13f * s2}, {1.f, 0.f, 0.1f}},
+        {{-61.5f,  -1.5f, 13.0f},  {0.88f * s2, 0.35f * s2, 0.13f * s2}, {0.5f, 0.f, 0.1f}},
+        {{-61.5f,  -1.5f, -20.0f}, {0.88f * s2, 0.35f * s2, 0.13f * s2}, {0.5f, 0.f, 0.1f}},
+        {{48.5f,   -1.5f, 13.0f},  {0.88f * s2, 0.35f * s2, 0.13f * s2}, {0.5f, 0.f, 0.1f}},
+        {{48.5f,   -1.5f, -20.0f}, {0.88f * s2, 0.35f * s2, 0.13f * s2}, {0.5f, 0.f, 0.1f}},
     };
 
     auto last_frame_start = std::chrono::high_resolution_clock::now();
@@ -145,6 +146,10 @@ int main() try {
     float angle = 0.f;
 
     glm::mat4 projection = glm::perspective(glm::pi<float>() / 2.f, (1.f * width) / height, near, far);
+
+    glEnable(GL_BLEND);
+    glBlendEquation(GL_FUNC_ADD);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
     bool running = true;
     while (running) {
@@ -175,8 +180,8 @@ int main() try {
                     button_down[event.key.keysym.sym] = false;
                     break;
                 case SDL_MOUSEMOTION:
-                    angle -= 0.002f * (float) (event.motion.yrel);
-                    rot_ang -= 0.002f * (float) (event.motion.xrel);
+                    angle -= 0.003f * (float) (event.motion.yrel);
+                    rot_ang -= 0.003f * (float) (event.motion.xrel);
                     break;
             }
 
@@ -257,7 +262,7 @@ int main() try {
         glUniformMatrix4fv(main_program["view"], 1, GL_FALSE, reinterpret_cast<float *>(&view));
         glUniformMatrix4fv(main_program["projection"], 1, GL_FALSE, reinterpret_cast<float *>(&projection));
 
-        glUniform3f(main_program["ambient"], 0.2f, 0.2f, 0.2f);
+        glUniform3f(main_program["ambient"], 0.3f, 0.3f, 0.3f);
 
         glUniform3fv(main_program["light_direction"], 1, reinterpret_cast<float *>(&direction_light.direction));
         glUniform3fv(main_program["light_color"], 1, reinterpret_cast<float *>(&direction_light.light));

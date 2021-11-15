@@ -88,7 +88,7 @@ void cubemap_builder::init(int resolution) {
     glFramebufferRenderbuffer(GL_DRAW_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, _rbo);
 
     if (glCheckFramebufferStatus(GL_DRAW_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
-        throw std::runtime_error("Incomplete framebuffer 21 21!");
+        throw std::runtime_error("Incomplete framebuffer!");
 }
 
 cubemap_builder::cubemap_builder(int resolution) {

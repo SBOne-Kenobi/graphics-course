@@ -216,8 +216,8 @@ void parse_scene(const std::string& file, scene_storage& scene, bool with_textur
     GLuint specular_map = -1;
     GLuint norm_map = -1;
     GLuint mask = -1;
-    glm::vec3 specular_color;
-    float specular_power;
+    glm::vec3 specular_color = {1.f, 1.f, 1.f};
+    float specular_power = 4.f;
 
     std::vector<glm::vec3> positions;
     std::vector<glm::vec3> normals;
@@ -336,7 +336,7 @@ void parse_scene(const std::string& file, scene_storage& scene, bool with_textur
             continue;
         }
 
-        if (cmd == "g") {
+        if (cmd == "g" || cmd == "o") {
             add_object();
             continue;
         }

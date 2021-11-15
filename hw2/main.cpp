@@ -47,6 +47,28 @@ void glew_fail(std::string_view message, GLenum error) {
     throw std::runtime_error(to_string(message) + reinterpret_cast<const char *>(glewGetErrorString(error)));
 }
 
+std::pair<glm::vec3, glm::vec3> get_bbox(scene_storage& scene) {
+    glm::vec3 bbox_min(0.f);
+    glm::vec3 bbox_max(0.f);
+
+    scene.apply([&bbox_min, &bbox_max](object &obj) {
+        for (auto v : obj.vertices) {
+
+            auto pos = obj.model * glm::vec4(v.position, 1.f);
+
+            bbox_min.x = std::min(bbox_min.x, pos.x);
+            bbox_min.y = std::min(bbox_min.y, pos.y);
+            bbox_min.z = std::min(bbox_min.z, pos.z);
+
+            bbox_max.x = std::max(bbox_max.x, pos.x);
+            bbox_max.y = std::max(bbox_max.y, pos.y);
+            bbox_max.z = std::max(bbox_max.z, pos.z);
+        }
+    });
+
+    return {bbox_min, bbox_max};
+}
+
 int main() try {
     if (SDL_Init(SDL_INIT_VIDEO) != 0)
         sdl2_fail("SDL_Init: ");
@@ -93,39 +115,36 @@ int main() try {
         obj.model = glm::scale(obj.model, glm::vec3(0.1f));
     });
 
-    shader_program main_program(object_vertex_shader_source, object_fragment_shader_source);
+    scene_storage helmet;
+    parse_scene(PROJECT_SOURCE_DIRECTORY "/scenes/helmet/helmet_armet_2.obj", helmet, false);
 
-    shadow_map_builder shadow(0, 4096);
+    float helmet_scale = 0.5f;
 
-    glm::vec3 bbox_min(0.f);
-    glm::vec3 bbox_max(0.f);
-
-    main_scene.apply([&bbox_min, &bbox_max](object &obj) {
-        for (auto v : obj.vertices) {
-
-            auto pos = obj.model * glm::vec4(v.position, 1.f);
-
-            bbox_min.x = std::min(bbox_min.x, pos.x);
-            bbox_min.y = std::min(bbox_min.y, pos.y);
-            bbox_min.z = std::min(bbox_min.z, pos.z);
-
-            bbox_max.x = std::max(bbox_max.x, pos.x);
-            bbox_max.y = std::max(bbox_max.y, pos.y);
-            bbox_max.z = std::max(bbox_max.z, pos.z);
-        }
+    helmet.apply([&helmet_scale](object& obj) {
+        obj.model = glm::translate(obj.model, {0.f, 0.f, -15.f});
+        obj.model = glm::rotate(obj.model, glm::radians(-90.f), {1.f, 0.f, 0.f});
+        obj.model = glm::scale(obj.model, glm::vec3(helmet_scale));
     });
 
+    shader_program main_program(object_vertex_shader_source, object_fragment_shader_source);
+
+    shadow_map_builder shadow(0, 1024 * 4);
+
+    auto main_bbox = get_bbox(main_scene);
+
     float s0 = 5.f;
-    float s1 = 10.f;
+    float s1 = 15.f;
     float s2 = 10.f;
 
-    direction_light_object direction_light(glm::vec3(0.f), {1.f * s0, 0.81f * s0, 0.28f * s0});
+    direction_light_object direction_light(glm::vec3(0.f), {
+        1.f * s0, 0.81f * s0, 0.28f * s0
+    });
 
     std::vector<point_light_object> point_lights = {
-        {{-111.5f, 3.0f,  -40.5f}, {0.88f * s1, 0.35f * s1, 0.13f * s1}, {1.f, 0.f, 0.01f}},
-        {{111.5f,  3.0f,  -40.5f}, {0.20f * s1, 0.95f * s1, 0.20f * s1}, {1.f, 0.f, 0.01f}},
-        {{-111.5f, 3.0f,  40.5f},  {0.58f * s1, 0.72f * s1, 0.90f * s1}, {1.f, 0.f, 0.01f}},
-        {{111.5f,  3.0f,  40.5f},  {0.55f * s1, 0.43f * s1, 0.31f * s1}, {1.f, 0.f, 0.01f}},
+        {{-111.5f, 3.0f,  -40.5f}, {0.88f * s1, 0.35f * s1, 0.13f * s1}, {0.1f, 0.f, 0.01f}},
+        {{111.5f,  3.0f,  -40.5f}, {0.20f * s1, 0.95f * s1, 0.20f * s1}, {0.1f, 0.f, 0.01f}},
+        {{-111.5f, 3.0f,  40.5f},  {0.58f * s1, 0.72f * s1, 0.90f * s1}, {0.1f, 0.f, 0.01f}},
+        {{111.5f,  3.0f,  40.5f},  {0.55f * s1, 0.43f * s1, 0.31f * s1}, {0.1f, 0.f, 0.01f}},
 
         {{-61.5f,  -1.5f, 13.0f},  {0.88f * s2, 0.35f * s2, 0.13f * s2}, {0.5f, 0.f, 0.1f}},
         {{-61.5f,  -1.5f, -20.0f}, {0.88f * s2, 0.35f * s2, 0.13f * s2}, {0.5f, 0.f, 0.1f}},
@@ -152,9 +171,11 @@ int main() try {
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
     bool running = true;
+    bool helmet_follow = false;
     while (running) {
         float rot_ang = 0.f;
         bool in_window = false;
+        float d_scale_helmet = 0.f;
         for (SDL_Event event; SDL_PollEvent(&event);)
             switch (event.type) {
                 case SDL_QUIT:
@@ -174,6 +195,9 @@ int main() try {
                     if (event.key.keysym.sym == SDLK_ESCAPE) {
                         running = false;
                     }
+                    if (event.key.keysym.sym == SDLK_q) {
+                        helmet_follow = !helmet_follow;
+                    }
                     button_down[event.key.keysym.sym] = true;
                     break;
                 case SDL_KEYUP:
@@ -182,6 +206,14 @@ int main() try {
                 case SDL_MOUSEMOTION:
                     angle -= 0.003f * (float) (event.motion.yrel);
                     rot_ang -= 0.003f * (float) (event.motion.xrel);
+                    break;
+                case SDL_MOUSEWHEEL:
+                    d_scale_helmet += 0.01f * (float) (event.wheel.y);
+                    break;
+                case SDL_MOUSEBUTTONDOWN:
+                    if (event.button.button == SDL_BUTTON_LEFT) {
+                        helmet_follow = !helmet_follow;
+                    }
                     break;
             }
 
@@ -232,14 +264,28 @@ int main() try {
             move_vector.y -= 50.f * dt;
         }
         cam_pos = glm::translate(cam_pos, move_vector);
+        glm::mat4 cam_pos_upd = glm::rotate(cam_pos, angle, {1, 0, 0});
 
         std::cout << to_string(cam_pos * glm::vec4(0.f, 0.f, 0.f, 1.f)) << std::endl;
 
-        auto bbox = std::make_pair(bbox_min, bbox_max);
+        direction_light.direction = glm::normalize(glm::vec3(
+            2.0f * std::cos(0.5f * time),
+            3.f,
+            1.1f * std::sin(0.5f * time)
+        ));
 
-        direction_light.direction = glm::normalize(glm::vec3(std::cos(0.5f * time), 5.f, std::sin(0.5f * time)));
+        if (helmet_follow) {
+            helmet_scale += d_scale_helmet;
 
-        shadow.draw(main_scene, bbox, direction_light);
+            helmet.apply([&cam_pos_upd, &helmet_scale](object& obj) {
+                obj.model = cam_pos_upd;
+                obj.model = glm::translate(obj.model, {0.f, 0.f, -15.f});
+                obj.model = glm::rotate(obj.model, glm::radians(-90.f), {1.f, 0.f, 0.f});
+                obj.model = glm::scale(obj.model, glm::vec3(helmet_scale));
+            });
+        }
+
+        shadow.draw({&main_scene, &helmet}, main_bbox, direction_light);
 
         glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
         glViewport(0, 0, width, height);
@@ -255,8 +301,8 @@ int main() try {
         glActiveTexture(GL_TEXTURE0);
         glBindTexture(GL_TEXTURE_2D, shadow.shadow_map);
 
-        glm::mat4 transform = direction_light.get_transform(bbox);
-        glm::mat4 view = glm::inverse(glm::rotate(cam_pos, angle, {1, 0, 0}));
+        glm::mat4 transform = direction_light.get_transform(main_bbox);
+        glm::mat4 view = glm::inverse(cam_pos_upd);
 
         main_program.bind();
         glUniformMatrix4fv(main_program["view"], 1, GL_FALSE, reinterpret_cast<float *>(&view));
@@ -284,7 +330,8 @@ int main() try {
             glUniform3fv(main_program[name.str()], 1, reinterpret_cast<float *>(&point_lights[i].position));
         }
 
-        main_scene.draw_objects(main_program, true, true);
+        main_scene.draw_objects(main_program);
+        helmet.draw_objects(main_program);
 
         SDL_GL_SwapWindow(window);
     }

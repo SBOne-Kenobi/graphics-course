@@ -65,7 +65,7 @@ void main()
                 shadow_factor = 1.0;
             } else {
                 shadow_factor = sigma / (sigma + (z - mu) * (z - mu));
-                float delta = 0.125;
+                float delta = 0.6;
                 if (shadow_factor < delta) {
                     shadow_factor = 0.0;
                 } else {
@@ -74,7 +74,6 @@ void main()
             }
         }
     }
-
     vec3 albedo = use_albedo ? texture(albedo_texture, texcoord).rgb : vec3(1.0, 1.0, 1.0);
 
     vec3 light = ambient;

@@ -38,7 +38,7 @@ shadow_map_builder::shadow_map_builder(int target_texture, int resolution) {
 }
 
 void shadow_map_builder::draw(
-    scene_storage& scene,
+    const std::vector<scene_storage*>& scenes,
     const std::pair<glm::vec3, glm::vec3>& bbox,
     const direction_light_object& light_obj
 ) {
@@ -57,7 +57,10 @@ void shadow_map_builder::draw(
     _program.bind();
     glUniformMatrix4fv(_program["transform"], 1, GL_FALSE, reinterpret_cast<float *>(&transform));
 
-    scene.draw_objects(_program, false, false);
+    for (auto scene : scenes) {
+        scene->draw_objects(_program, false, false);
+    }
+
     _blur.do_blur();
     glBindTexture(GL_TEXTURE_2D, shadow_map);
     glGenerateMipmap(GL_TEXTURE_2D);

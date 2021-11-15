@@ -16,7 +16,7 @@ public:
     shadow_map_builder(int target_texture, int resolution);
 
     void draw(
-        scene_storage& scene,
+        const std::vector<scene_storage*>& scenes,
         const std::pair<glm::vec3, glm::vec3>& bbox,
         const direction_light_object& light_obj
     );

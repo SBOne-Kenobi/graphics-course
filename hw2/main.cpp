@@ -127,7 +127,7 @@ int main() try {
     shader_program main_program(object_vertex_shader_source, object_fragment_shader_source);
 
     shadow_map_builder shadow(0, 6 * 512);
-    cubemap_builder cubemap(256);
+    cubemap_builder cubemap(128, true);
 
     helmet.apply([&helmet_model, &cubemap](object &obj) {
         obj.model = helmet_model;
@@ -164,6 +164,9 @@ int main() try {
 
     float near = 0.01f;
     float far = 1000.f;
+
+    float move_speed = 25.f;
+    float mouse_speed = 0.001f;
 
     glm::mat4 cam_pos(1.f);
     float angle = 0.f;
@@ -209,8 +212,8 @@ int main() try {
                     button_down[event.key.keysym.sym] = false;
                     break;
                 case SDL_MOUSEMOTION:
-                    d_angle -= 0.003f * (float) (event.motion.yrel);
-                    rot_ang -= 0.003f * (float) (event.motion.xrel);
+                    d_angle -= mouse_speed * (float) (event.motion.yrel);
+                    rot_ang -= mouse_speed * (float) (event.motion.xrel);
                     break;
                 case SDL_MOUSEWHEEL:
                     d_scale_helmet += 0.01f * (float) (event.wheel.y);
@@ -255,22 +258,22 @@ int main() try {
             glm::vec3 move_vector(0.f);
 
             if (button_down[SDLK_w]) {
-                move_vector.z -= 50.f * dt;
+                move_vector.z -= move_speed * dt;
             }
             if (button_down[SDLK_s]) {
-                move_vector.z += 50.f * dt;
+                move_vector.z += move_speed * dt;
             }
             if (button_down[SDLK_a]) {
-                move_vector.x -= 50.f * dt;
+                move_vector.x -= move_speed * dt;
             }
             if (button_down[SDLK_d]) {
-                move_vector.x += 50.f * dt;
+                move_vector.x += move_speed * dt;
             }
             if (button_down[SDLK_SPACE]) {
-                move_vector.y += 50.f * dt;
+                move_vector.y += move_speed * dt;
             }
             if (button_down[SDLK_LSHIFT]) {
-                move_vector.y -= 50.f * dt;
+                move_vector.y -= move_speed * dt;
             }
             cam_pos = glm::translate(cam_pos, move_vector);
         } else {
@@ -337,6 +340,7 @@ int main() try {
 
         cubemap.draw(helmet_position, {&main_scene}, main_program, near, far);
 
+        main_program.bind();
         glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
         glViewport(0, 0, width, height);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);

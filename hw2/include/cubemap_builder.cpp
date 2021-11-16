@@ -33,24 +33,28 @@ glm::mat4 get_camera_view(glm::vec3 position, int index) {
 
 void cubemap_builder::draw(
     glm::vec3 position,
-    const std::vector<scene_storage*>& scenes,
+    const std::vector<scene_storage *> &scenes,
     shader_program &program,
     float near, float far
-) const {
-    glBindFramebuffer(GL_DRAW_FRAMEBUFFER, _fbo);
+) {
     glViewport(0, 0, _resolution, _resolution);
-
     glm::mat4 projection = glm::perspective(glm::radians(90.f), 1.f, near, far);
+    program.bind();
     glUniformMatrix4fv(program["projection"], 1, GL_FALSE, reinterpret_cast<float *>(&projection));
 
     for (int i = 0; i < 6; i++) {
+        program.bind();
+
         glm::mat4 view = get_camera_view(position, i);
         glUniformMatrix4fv(program["view"], 1, GL_FALSE, reinterpret_cast<float *>(&view));
-        glFramebufferTexture2D(GL_DRAW_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_CUBE_MAP_POSITIVE_X + i, cubemap, 0);
+        if (_with_blur) {
+            glBindFramebuffer(GL_DRAW_FRAMEBUFFER, _tmp_fbo);
+        } else {
+            glBindFramebuffer(GL_DRAW_FRAMEBUFFER, _fbo);
+            glFramebufferTexture2D(GL_DRAW_FRAMEBUFFER, GL_COLOR_ATTACHMENT0,
+                                   GL_TEXTURE_CUBE_MAP_POSITIVE_X + i, cubemap, 0);
+        }
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-
-        glEnable(GL_DEPTH_TEST);
-        glDepthFunc(GL_LEQUAL);
 
         glEnable(GL_CULL_FACE);
         glCullFace(GL_FRONT);
@@ -58,11 +62,24 @@ void cubemap_builder::draw(
         for (auto scene : scenes) {
             scene->draw_objects(program, true, true);
         }
+
+        if (_with_blur) {
+            glBindFramebuffer(GL_DRAW_FRAMEBUFFER, _fbo);
+            glFramebufferTexture2D(GL_DRAW_FRAMEBUFFER, GL_COLOR_ATTACHMENT0,
+                                   GL_TEXTURE_CUBE_MAP_POSITIVE_X + i, cubemap, 0);
+            glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+            glEnable(GL_CULL_FACE);
+            glCullFace(GL_BACK);
+
+            _blur.do_blur(1, 2.0);
+        }
     }
 }
 
-void cubemap_builder::init(int resolution) {
+void cubemap_builder::init(int resolution, bool with_blur) {
     _resolution = resolution;
+    _with_blur = with_blur;
 
     glGenTextures(1, &cubemap);
     glBindTexture(GL_TEXTURE_CUBE_MAP, cubemap);
@@ -89,8 +106,28 @@ void cubemap_builder::init(int resolution) {
 
     if (glCheckFramebufferStatus(GL_DRAW_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
         throw std::runtime_error("Incomplete framebuffer!");
+
+    if (_with_blur) {
+        glGenTextures(1, &_tmp_texture);
+        glBindTexture(GL_TEXTURE_2D, _tmp_texture);
+        glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+        glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+        glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+        glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, _resolution, _resolution, 0, GL_RGBA, GL_FLOAT, nullptr);
+
+        glGenFramebuffers(1, &_tmp_fbo);
+        glBindFramebuffer(GL_DRAW_FRAMEBUFFER, _tmp_fbo);
+        glFramebufferRenderbuffer(GL_DRAW_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, _rbo);
+        glFramebufferTexture(GL_DRAW_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, _tmp_texture, 0);
+
+        if (glCheckFramebufferStatus(GL_DRAW_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
+            throw std::runtime_error("Incomplete framebuffer!");
+
+        _blur.init(7, _tmp_texture, GL_RGBA, _resolution, _resolution, _fbo);
+    }
 }
 
-cubemap_builder::cubemap_builder(int resolution) {
-    init(resolution);
+cubemap_builder::cubemap_builder(int resolution, bool with_blur) {
+    init(resolution, with_blur);
 }

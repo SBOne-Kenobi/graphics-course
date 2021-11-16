@@ -62,7 +62,7 @@ void shadow_map_builder::draw(
         scene->draw_objects(_program, false, false);
     }
 
-    _blur.do_blur();
+    _blur.do_blur(7, 3.f);
     glBindTexture(GL_TEXTURE_2D, shadow_map);
     glGenerateMipmap(GL_TEXTURE_2D);
 

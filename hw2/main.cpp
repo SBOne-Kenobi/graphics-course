@@ -48,7 +48,7 @@ void glew_fail(std::string_view message, GLenum error) {
     throw std::runtime_error(to_string(message) + reinterpret_cast<const char *>(glewGetErrorString(error)));
 }
 
-std::pair<glm::vec3, glm::vec3> get_bbox(scene_storage& scene) {
+std::pair<glm::vec3, glm::vec3> get_bbox(scene_storage &scene) {
     glm::vec3 bbox_min(0.f);
     glm::vec3 bbox_max(0.f);
 
@@ -105,9 +105,6 @@ int main() try {
     if (!GLEW_VERSION_3_3)
         throw std::runtime_error("OpenGL 3.3 is not supported");
 
-    SDL_ShowCursor(SDL_DISABLE);
-    SDL_SetRelativeMouseMode(SDL_TRUE);
-
     scene_storage main_scene;
     parse_scene(PROJECT_SOURCE_DIRECTORY "/scenes/sponza/sponza.obj", main_scene, true);
 
@@ -129,8 +126,8 @@ int main() try {
 
     shader_program main_program(object_vertex_shader_source, object_fragment_shader_source);
 
-    shadow_map_builder shadow(0, 1024 * 4);
-    cubemap_builder cubemap(1024);
+    shadow_map_builder shadow(0, 6 * 512);
+    cubemap_builder cubemap(256);
 
     helmet.apply([&helmet_model, &cubemap](object &obj) {
         obj.model = helmet_model;
@@ -183,6 +180,7 @@ int main() try {
         float rot_ang = 0.f;
         bool in_window = false;
         float d_scale_helmet = 0.f;
+        float d_angle = 0.f;
         for (SDL_Event event; SDL_PollEvent(&event);)
             switch (event.type) {
                 case SDL_QUIT:
@@ -211,7 +209,7 @@ int main() try {
                     button_down[event.key.keysym.sym] = false;
                     break;
                 case SDL_MOUSEMOTION:
-                    angle -= 0.003f * (float) (event.motion.yrel);
+                    d_angle -= 0.003f * (float) (event.motion.yrel);
                     rot_ang -= 0.003f * (float) (event.motion.xrel);
                     break;
                 case SDL_MOUSEWHEEL:
@@ -226,54 +224,64 @@ int main() try {
 
         if (!running)
             break;
-        if (SDL_GetWindowFlags(window) & SDL_WINDOW_MOUSE_FOCUS) {
-            SDL_WarpMouseInWindow(window, width / 2, height / 2);
-        }
 
         auto now = std::chrono::high_resolution_clock::now();
         float dt = std::chrono::duration_cast<std::chrono::duration<float>>(now - last_frame_start).count();
         last_frame_start = now;
         time += dt;
+        std::cout << 1.f / dt << std::endl;
 
-        if (button_down[SDLK_UP]) {
-            angle += 2.f * dt;
-        }
-        if (button_down[SDLK_DOWN]) {
-            angle -= 2.f * dt;
+        if (!button_down[SDLK_LCTRL]) {
+            if (SDL_GetWindowFlags(window) & SDL_WINDOW_MOUSE_FOCUS) {
+                SDL_SetRelativeMouseMode(SDL_TRUE);
+                SDL_ShowCursor(SDL_DISABLE);
+                SDL_WarpMouseInWindow(window, width / 2, height / 2);
+            }
+            if (button_down[SDLK_UP]) {
+                angle += 2.f * dt;
+            }
+            if (button_down[SDLK_DOWN]) {
+                angle -= 2.f * dt;
+            }
+
+            if (button_down[SDLK_LEFT]) {
+                rot_ang += 2.f * dt;
+            }
+            if (button_down[SDLK_RIGHT]) {
+                rot_ang -= 2.f * dt;
+            }
+            cam_pos = glm::rotate(cam_pos, rot_ang, {0, 1, 0});
+
+            glm::vec3 move_vector(0.f);
+
+            if (button_down[SDLK_w]) {
+                move_vector.z -= 50.f * dt;
+            }
+            if (button_down[SDLK_s]) {
+                move_vector.z += 50.f * dt;
+            }
+            if (button_down[SDLK_a]) {
+                move_vector.x -= 50.f * dt;
+            }
+            if (button_down[SDLK_d]) {
+                move_vector.x += 50.f * dt;
+            }
+            if (button_down[SDLK_SPACE]) {
+                move_vector.y += 50.f * dt;
+            }
+            if (button_down[SDLK_LSHIFT]) {
+                move_vector.y -= 50.f * dt;
+            }
+            cam_pos = glm::translate(cam_pos, move_vector);
+        } else {
+            SDL_SetRelativeMouseMode(SDL_FALSE);
+            SDL_ShowCursor(SDL_ENABLE);
+            d_scale_helmet = 0.f;
+            d_angle = 0.f;
         }
 
-        if (button_down[SDLK_LEFT]) {
-            rot_ang += 2.f * dt;
-        }
-        if (button_down[SDLK_RIGHT]) {
-            rot_ang -= 2.f * dt;
-        }
-        cam_pos = glm::rotate(cam_pos, rot_ang, {0, 1, 0});
-
-        glm::vec3 move_vector(0.f);
-
-        if (button_down[SDLK_w]) {
-            move_vector.z -= 50.f * dt;
-        }
-        if (button_down[SDLK_s]) {
-            move_vector.z += 50.f * dt;
-        }
-        if (button_down[SDLK_a]) {
-            move_vector.x -= 50.f * dt;
-        }
-        if (button_down[SDLK_d]) {
-            move_vector.x += 50.f * dt;
-        }
-        if (button_down[SDLK_SPACE]) {
-            move_vector.y += 50.f * dt;
-        }
-        if (button_down[SDLK_LSHIFT]) {
-            move_vector.y -= 50.f * dt;
-        }
-        cam_pos = glm::translate(cam_pos, move_vector);
+        angle += d_angle;
         glm::mat4 cam_pos_upd = glm::rotate(cam_pos, angle, {1, 0, 0});
-
-        std::cout << to_string(cam_pos * glm::vec4(0.f, 0.f, 0.f, 1.f)) << std::endl;
 
         direction_light.direction = glm::normalize(glm::vec3(
             2.0f * std::cos(0.5f * time),
@@ -289,7 +297,7 @@ int main() try {
             helmet_model = glm::scale(helmet_model, glm::vec3(helmet_scale));
             helmet_position = helmet_model * glm::vec4(0.f, 0.f, 0.f, 1.f);
 
-            helmet.apply([&helmet_model](object& obj) {
+            helmet.apply([&helmet_model](object &obj) {
                 obj.model = helmet_model;
             });
         }

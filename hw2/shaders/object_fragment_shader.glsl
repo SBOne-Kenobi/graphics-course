@@ -42,6 +42,7 @@ void main()
 
     vec3 normal_vec = use_norm ? normalize(2 * texture(norm_map, texcoord).xyz - 1) : vec3(0.0, 0.0, 1.0);
     normal_vec = normalize(tbn * normal_vec);
+    vec3 normal = normalize(tbn * vec3(0.0, 0.0, 1.0));
 
     vec3 cam_direction = normalize(cam_position - position);
 
@@ -87,6 +88,10 @@ void main()
 
     vec3 light = ambient;
 
+    if (dot(normal, light_direction) < 0.0) {
+        shadow_factor = 0.0;
+    }
+
     light += light_color * max(0.0, dot(normal_vec, light_direction)) * shadow_factor;
     vec3 color = albedo * light;
 
@@ -98,9 +103,11 @@ void main()
     for (int i = 0; i < point_light_number; i++) {
         vec3 point_light_vector = point_light_position[i] - position;
         vec3 point_light_direction = normalize(point_light_vector);
+        if (dot(normal, point_light_direction) < 0.0) {
+            continue;
+        }
         float point_light_cosine = dot(normal_vec, point_light_direction);
         float point_light_factor = max(0.0, point_light_cosine);
-
         float point_light_distance = length(point_light_vector);
         float point_light_intensity = 1.0 / dot(point_light_attenuation[i],
             vec3(1.0, point_light_distance, point_light_distance * point_light_distance));
@@ -109,6 +116,7 @@ void main()
 
         vec3 point_reflected = 2.0 * normal_vec * point_light_cosine - point_light_direction;
         float point_specular = pow(max(0.0, dot(point_reflected, cam_direction)), specular_power) * specular_factor;
+
         float specular_intensity = 1.0 / dot(vec2(1.0, 0.1),
             vec2(1.0, point_light_distance));
         color += specular_intensity * point_light_color[i] * specular_color * point_specular;

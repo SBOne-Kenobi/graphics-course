@@ -49,6 +49,10 @@ uniform mat4 model;
 uniform mat4 view;
 uniform mat4 projection;
 
+uniform vec4 bone_rot[64];
+uniform vec3 bone_t[64];
+uniform float bone_scale[64];
+
 layout (location = 0) in vec3 in_position;
 layout (location = 1) in vec3 in_normal;
 layout (location = 2) in ivec2 in_bone_id;
@@ -74,9 +78,17 @@ vec3 quat_rotate(vec4 q, vec3 v)
 
 void main()
 {
-	gl_Position = projection * view * model * vec4(in_position, 1.0);
-	position = (model * vec4(in_position, 1.0)).xyz;
-	normal = normalize((model * vec4(in_normal, 0.0)).xyz);
+    vec3 pos1 = bone_scale[in_bone_id.x] * quat_rotate(bone_rot[in_bone_id.x], in_position) + bone_t[in_bone_id.x];
+    vec3 pos2 = bone_scale[in_bone_id.y] * quat_rotate(bone_rot[in_bone_id.y], in_position) + bone_t[in_bone_id.y];
+    vec3 pos = pos1 * in_bone_weight.x + pos2 * in_bone_weight.y;
+
+    gl_Position = projection * view * model * vec4(pos, 1.0);
+    position = (model * vec4(pos, 1.0)).xyz;
+
+    vec3 norm1 = quat_rotate(bone_rot[in_bone_id.x], in_normal);
+    vec3 norm2 = quat_rotate(bone_rot[in_bone_id.y], in_normal);
+    vec3 norm = norm1 * in_bone_weight.x + norm2 * in_bone_weight.y;
+	normal = normalize((model * vec4(norm, 0.0)).xyz);
 }
 )";
 
@@ -226,6 +238,20 @@ int main() try
 	GLuint light_direction_location = glGetUniformLocation(program, "light_direction");
 	GLuint light_color_location = glGetUniformLocation(program, "light_color");
 
+
+	std::vector<GLuint> bone_rot_location(64);
+    std::vector<GLuint> bone_t_location(64);
+    std::vector<GLuint> bone_scale_location(64);
+
+    for (int i = 0; i < 64; i++) {
+        auto str = "bone_rot[" + std::to_string(i) + "]";
+        bone_rot_location[i] = glGetUniformLocation(program, str.c_str());
+        str = "bone_t[" + std::to_string(i) + "]";
+        bone_t_location[i] = glGetUniformLocation(program, str.c_str());
+        str = "bone_scale[" + std::to_string(i) + "]";
+        bone_scale_location[i] = glGetUniformLocation(program, str.c_str());
+    }
+
 	std::vector<vertex> vertices;
 	std::vector<std::uint32_t> indices;
 	std::vector<bone> bones;
@@ -262,6 +288,17 @@ int main() try
 	}
 
 	std::cout << "Loaded " << vertices.size() << " vertices, " << indices.size() << " indices, " << bones.size() << " bones" << std::endl;
+
+    std::vector<std::vector<bone_pose>> comp_poses(poses);
+    for (int i = 0; i < 6; i++) {
+        for (int j = 0; j < poses[i].size(); j++) {
+            if (bones[j].parent_id != -1) {
+                auto& pose = comp_poses[i][j];
+                auto& parent_pose = comp_poses[i][bones[j].parent_id];
+                pose = parent_pose * pose;
+            }
+        }
+    }
 
 	GLuint vao, vbo, ebo;
 	glGenVertexArrays(1, &vao);
@@ -370,6 +407,27 @@ int main() try
 		glUniform3f(ambient_location, 0.2f, 0.2f, 0.4f);
 		glUniform3f(light_direction_location, 1.f / std::sqrt(3.f), 1.f / std::sqrt(3.f), 1.f / std::sqrt(3.f));
 		glUniform3f(light_color_location, 0.8f, 0.3f, 0.f);
+
+		float tm = time * 2.0;
+		int frame = std::floor(tm);
+		int next_frame = frame + 1;
+		float t = tm - (float)frame;
+		t = 3 * t * t - 2 * t * t * t;
+		frame %= 6;
+		next_frame %= 6;
+
+		for (int i = 0; i < bones.size(); i++) {
+		    auto& pose = comp_poses[frame][i];
+		    auto& next_pose = comp_poses[next_frame][i];
+
+		    glm::quat rot = glm::slerp(pose.rotation, next_pose.rotation, t);
+		    glm::vec3 tr  = glm::mix(pose.translation, next_pose.translation, t);
+		    float scale   = glm::mix(pose.scale, next_pose.scale, t);
+
+            glUniform4fv(bone_rot_location[i], 1, (float*)(&rot));
+            glUniform3fv(bone_t_location[i], 1, (float*)(&tr));
+            glUniform1f(bone_scale_location[i], scale);
+		}
 
 		glBindVertexArray(vao);
 		glDrawElements(GL_TRIANGLES, indices.size(), GL_UNSIGNED_INT, nullptr);

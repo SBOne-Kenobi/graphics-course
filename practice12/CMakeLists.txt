@@ -20,7 +20,9 @@ if(APPLE)
 	list(APPEND GLEW_LIBRARIES "${GLEW_LIBRARY}")
 endif()
 
-add_subdirectory(glm)
+if (NOT TARGET glm)
+	add_subdirectory(glm)
+endif()
 
 set(TARGET_NAME "${PROJECT_NAME}")
 

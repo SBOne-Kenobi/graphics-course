@@ -10,7 +10,7 @@ set(SDL2_DLL "${SDL2_ROOT}/bin/SDL2.dll")
 set(SUBDIRS
     practice1 practice2 practice3 practice4 practice5
     hw1 practice6 practice7 practice8 hw2 practice9 practice10
-    practice11
+    practice11 practice12
 )
 
 add_subdirectory(libs)

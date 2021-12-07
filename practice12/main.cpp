@@ -64,7 +64,7 @@ uniform vec3 light_dir;
 uniform sampler3D tex;
 
 const int N = 64;
-const float C = 100.0;
+const float C = 24.0;
 const float gamma = 1.0 / 2.2;
 const int N_shadow = 8;
 
@@ -111,7 +111,7 @@ void main()
 
         vec3 cur_position = camera_position + dir * t;
 
-        vec3 dir_shadow = -normalize(light_dir);
+        vec3 dir_shadow = normalize(light_dir);
         vec2 t_b_shadow = get_t_border(cur_position, dir_shadow);
         float dt_shadow = (t_b_shadow.y - t_b_shadow.x) / N_shadow;
         float shadow_factor = 0.0;
@@ -131,7 +131,7 @@ void main()
         tex_color.a = 1 - exp(-C * dt * tex_color.a);
         vec4 color = vec4(tex_color.rgb * tex_color.a * shadow_factor, tex_color.a);
 
-        result_color += color * dt * (1 - result_color.a);
+        result_color += color * (1 - result_color.a);
     }
 
     out_color = vec4(pow(result_color.rgb, vec3(gamma)), result_color.a);
